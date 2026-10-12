@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { Load, LoadKind, Panel } from '../types';
 import { layoutPanel } from './placement';
 
-const panel = (spaces = 20, maxCircuits = 40): Panel => ({ id: 'p', name: 'P', mainA: 200, fedFrom: null, spaces, maxCircuits });
+const panel = (spaces = 20, maxCircuits = 40): Panel => ({
+  id: 'p',
+  name: 'P',
+  mainA: 200,
+  fedFrom: null,
+  spaces,
+  maxCircuits,
+});
 let n = 0;
 const load = (kind: LoadKind, amps = 10, extra: Partial<Load> = {}): Load => ({
   id: `l${n++}`,
@@ -12,6 +19,7 @@ const load = (kind: LoadKind, amps = 10, extra: Partial<Load> = {}): Load => ({
   kind,
   continuous: false,
   slot: null,
+  estAmps: null,
   locked: false,
   ...extra,
 });

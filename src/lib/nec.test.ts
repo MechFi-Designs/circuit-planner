@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatWire, requiredAmpacity, sizeBreaker, sizeWire } from './nec';
+import { formatWire, kwOf, requiredAmpacity, sizeBreaker, sizeEgc, sizeWire } from './nec';
 
 function size(amps: number, continuous = false) {
   const breaker = sizeBreaker(requiredAmpacity(amps, continuous))!;
@@ -33,5 +33,31 @@ describe('breaker and wire sizing', () => {
   });
   it('no load → no breaker', () => {
     expect(sizeBreaker(0)).toBeNull();
+  });
+});
+
+describe('equipment grounding conductor (Table 250.122, Cu)', () => {
+  const egc = (amps: number) => {
+    const breaker = sizeBreaker(amps)!;
+    return sizeEgc(breaker, sizeWire(breaker, 'cu'));
+  };
+  it('15 A → #14, 20 A → #12, 30 A → #10', () => {
+    expect([egc(15), egc(20), egc(30)]).toEqual(['#14', '#12', '#10']);
+  });
+  it('60 A → #10, 100 A → #8, 200 A → #6', () => {
+    expect([egc(60), egc(100), egc(200)]).toEqual(['#10', '#8', '#6']);
+  });
+  it('never larger than the circuit conductors (250.122(A))', () => {
+    // 25 A breaker uses the 60 A row (#10) and #10 conductors → #10.
+    expect(egc(25)).toBe('#10');
+  });
+});
+
+describe('kW', () => {
+  it('uses V·I for single phase and √3·V·I for three phase', () => {
+    expect(kwOf('120-1p', 10)).toBeCloseTo(1.2);
+    expect(kwOf('240-2p', 10)).toBeCloseTo(2.4);
+    expect(kwOf('208-2p', 10)).toBeCloseTo(2.08);
+    expect(kwOf('208-3p', 10)).toBeCloseTo(3.603, 3);
   });
 });

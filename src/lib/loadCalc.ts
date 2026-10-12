@@ -9,13 +9,20 @@ export interface PhaseTotals {
   connected: PhaseAmps;
   /** Same, with continuous loads at 125%. */
   worst: PhaseAmps;
+  /** Estimated typical running current. */
+  est: PhaseAmps;
 }
 
 export const zeroPhases = (): PhaseAmps => ({ A: 0, B: 0, C: 0 });
 
+export const zeroTotals = (): PhaseTotals => ({ connected: zeroPhases(), worst: zeroPhases(), est: zeroPhases() });
+
 export function worstAmps(load: Load): number {
   return load.amps * (load.continuous ? CONTINUOUS_FACTOR : 1);
 }
+
+/** Estimated running current, defaulting to the max. */
+export const estOf = (load: Load) => load.estAmps ?? load.amps;
 
 /**
  * Per-phase current. Each circuit's line current is added to every phase its
@@ -28,30 +35,31 @@ export function phaseTotals(
   placements: Map<string, Placement>,
   feeders: Map<string, PhaseTotals> = new Map(),
 ): PhaseTotals {
-  const connected = zeroPhases();
-  const worst = zeroPhases();
+  const { connected, worst, est } = zeroTotals();
   for (const l of loads) {
     const fed = feeders.get(l.id);
     if (fed) {
       for (const ph of ['A', 'B', 'C'] as const) {
         connected[ph] += fed.connected[ph];
         worst[ph] += fed.worst[ph];
+        est[ph] += fed.est[ph];
       }
       continue;
     }
     const p = placements.get(l.id);
-    if (!p || !(l.amps > 0)) continue;
+    if (!p) continue;
     for (const ph of p.phases) {
       connected[ph] += l.amps;
       worst[ph] += worstAmps(l);
+      est[ph] += estOf(l);
     }
   }
-  return { connected, worst };
+  return { connected, worst, est };
 }
 
 export function addTotals(a: PhaseTotals, b: PhaseTotals): PhaseTotals {
   const sum = (x: PhaseAmps, y: PhaseAmps): PhaseAmps => ({ A: x.A + y.A, B: x.B + y.B, C: x.C + y.C });
-  return { connected: sum(a.connected, b.connected), worst: sum(a.worst, b.worst) };
+  return { connected: sum(a.connected, b.connected), worst: sum(a.worst, b.worst), est: sum(a.est, b.est) };
 }
 
 export function maxPhase(amps: PhaseAmps, mode: ServiceMode): number {

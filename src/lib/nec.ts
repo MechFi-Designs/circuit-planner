@@ -85,6 +85,41 @@ const MIN_PARALLEL_INDEX: Record<Material, number> = {
   al: AL_TABLE.findIndex((r) => r.size === '1/0'),
 };
 
+/** NEC 2023 Table 250.122, copper equipment grounding conductor by OCPD rating. */
+const EGC_CU: [number, string][] = [
+  [15, '#14'],
+  [20, '#12'],
+  [60, '#10'],
+  [100, '#8'],
+  [200, '#6'],
+  [300, '#4'],
+  [400, '#3'],
+  [500, '#2'],
+  [600, '#1'],
+  [800, '1/0'],
+  [1000, '2/0'],
+  [1200, '3/0'],
+];
+
+const CU_ORDER = CU_TABLE.map((r) => r.size);
+
+/**
+ * Copper EGC for a breaker. Per 250.122(A) it never needs to be larger than the
+ * circuit conductors; with parallel sets, each raceway gets a full-size EGC (250.122(F)).
+ */
+export function sizeEgc(breakerA: number, phase: WireResult | null): string | null {
+  const row = EGC_CU.find(([a]) => a >= breakerA);
+  if (!row) return null;
+  if (phase && phase.sets === 1 && CU_ORDER.indexOf(phase.size) < CU_ORDER.indexOf(row[1])) return phase.size;
+  return row[1];
+}
+
+/** Power at a given current for a circuit type (kW). 3-phase uses √3·V·I. */
+export function kwOf(kind: LoadKind, amps: number): number {
+  const k = KINDS[kind];
+  return (amps * k.volts * (k.poles === 3 ? Math.sqrt(3) : 1)) / 1000;
+}
+
 export function requiredAmpacity(amps: number, continuous: boolean): number {
   return amps * (continuous ? CONTINUOUS_FACTOR : 1);
 }

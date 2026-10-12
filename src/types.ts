@@ -24,6 +24,8 @@ export interface Load {
   name: string;
   /** Max (nameplate / calculated) current in amps. */
   amps: number;
+  /** Estimated typical running current; null = same as max. */
+  estAmps: number | null;
   kind: LoadKind;
   continuous: boolean;
   /** Starting breaker space, or null for auto placement. */
@@ -40,4 +42,6 @@ export interface AppState {
   serviceA: number;
   panels: Panel[];
   loads: Load[];
+  /** Let Optimize move unlocked circuits between panels. */
+  optimizeAcrossPanels: boolean;
 }

@@ -2,8 +2,9 @@ import { useEffect, type Dispatch } from 'react';
 import type { AppState, Load, LoadKind, Panel } from '../types';
 import type { Action } from '../state';
 import type { Derived } from '../lib/derive';
+import { maxPhase } from '../lib/loadCalc';
 import { formatWire, KINDS, KINDS_BY_MODE, type WireResult } from '../lib/nec';
-import { fmtA } from '../lib/sizing';
+import { fmtA, fmtKw } from '../lib/sizing';
 import { NumInput } from './NumInput';
 import { PhaseChip } from './PhaseChip';
 
@@ -34,12 +35,25 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
       <div className="card-head">
         <h2>Load table</h2>
         <div className="actions">
+          {multiPanel && (
+            <label
+              className="check"
+              title="Let Optimize move unlocked circuits to another panel when that lowers a panel's or the service's load"
+            >
+              <input
+                type="checkbox"
+                checked={state.optimizeAcrossPanels}
+                onChange={(e) => dispatch({ type: 'setOptimizeAcrossPanels', on: e.target.checked })}
+              />
+              Move circuits between panels
+            </label>
+          )}
           <button
             className="btn primary"
             onClick={onOptimize}
             title="Re-slot unlocked circuits so worst-case current is spread evenly across phases"
           >
-            ⚖ Optimize phases
+            ⚖ Optimize
           </button>
         </div>
       </div>
@@ -58,8 +72,10 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
       ))}
 
       <p className="legend muted">
-        Breaker = next standard size ≥ load (× 1.25 if continuous). Wire = smallest THHN whose 75 °C ampacity is ≥ the
-        breaker, with the 240.4(D) small-conductor limits applied. Hover a wire size to see both ratings.
+        Breaker = next standard size ≥ max load (× 1.25 if continuous). Wire = smallest copper THHN whose 75 °C ampacity
+        is ≥ the breaker, with the 240.4(D) small-conductor limits applied (hover to see both ratings). EGC = copper
+        equipment ground per Table 250.122. kW = V × I (√3 for 3-phase). Est. A is your guess at typical running current
+        (blank = max). It only feeds the estimated load figures, never the sizing.
       </p>
     </section>
   );
@@ -90,14 +106,16 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
               <th>Slot</th>
               <th className="name-col">Name</th>
               <th>Max A</th>
+              <th title="Power at max current">kW</th>
               <th>Circuit</th>
               <th title="Continuous load (3 h or more): sized at 125%">Cont.</th>
+              <th title="Estimated typical running current. Blank = same as max.">Est. A</th>
               <th title="Required ampacity">Req’d</th>
               <th>Breaker</th>
               <th>Cu THHN</th>
-              <th>Al THHN</th>
+              <th title="Copper equipment grounding conductor (Table 250.122)">EGC</th>
               <th>Phase</th>
-              <th title="Locked circuits keep their slot when optimizing">Lock</th>
+              <th title="Locked circuits keep their slot and panel when optimizing">Lock</th>
               {multiPanel && <th>Panel</th>}
               <th aria-label="Delete" />
             </tr>
@@ -106,10 +124,12 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
             {loads.map((l) => {
               const s = derived.sizing.get(l.id)!;
               const sub = derived.feederOf.get(l.id);
+              const subEst = sub ? maxPhase(derived.totals.get(sub.id)!.est, state.mode) : 0;
               const p = layout.placements.get(l.id);
               const poles = KINDS[l.kind].poles;
               const lastStart = panel.spaces - 2 * (poles - 1);
               const conflict = layout.conflicts.includes(l.id);
+              const feederOver = sub && s.breaker != null && s.required > s.breaker;
               return (
                 <tr
                   key={l.id}
@@ -155,7 +175,7 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                   </td>
                   <td>
                     {sub ? (
-                      <span className="num" title={`${sub.name} worst-case phase load`}>
+                      <span className="num pad" title={`${sub.name} worst-case phase load`}>
                         {fmtA(s.required)}
                       </span>
                     ) : (
@@ -169,6 +189,9 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                         onCommit={(amps) => update(l.id, { amps: Math.max(0, amps) })}
                       />
                     )}
+                  </td>
+                  <td className="num" title={`Estimated ${fmtKw(s.estKw)} kW`}>
+                    {s.kw > 0 ? fmtKw(s.kw) : '—'}
                   </td>
                   <td>
                     {sub ? (
@@ -197,22 +220,40 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                       />
                     )}
                   </td>
+                  <td>
+                    {sub ? (
+                      <span className="num pad" title={`${sub.name} estimated phase load`}>
+                        {fmtA(subEst)}
+                      </span>
+                    ) : (
+                      <NumInput
+                        live
+                        min={0}
+                        step="any"
+                        className="amps est"
+                        value={l.estAmps}
+                        placeholder={l.amps ? fmtA(l.amps) : ''}
+                        aria-label="Estimated running current"
+                        onCommit={(amps) => update(l.id, { estAmps: Math.max(0, amps) })}
+                        onClear={() => update(l.id, { estAmps: null })}
+                      />
+                    )}
+                  </td>
                   <td className="num">{s.breaker ? fmtA(s.required) : '—'}</td>
                   <td
-                    className={`num strong${sub && s.breaker && s.required > s.breaker ? ' over' : ''}`}
-                    title={
-                      sub && s.breaker && s.required > s.breaker
-                        ? `${sub.name} load exceeds its feeder breaker`
-                        : undefined
-                    }
+                    className={`num strong${feederOver ? ' over' : ''}`}
+                    title={feederOver ? `${sub!.name} load exceeds its feeder breaker` : undefined}
                   >
                     {s.breaker ? `${s.breaker} A ${poles}P` : '—'}
                   </td>
                   <td className="num" title={wireTitle(s.cu, s.breaker)}>
                     {formatWire(s.cu)}
                   </td>
-                  <td className="num" title={wireTitle(s.al, s.breaker)}>
-                    {formatWire(s.al)}
+                  <td
+                    className="num"
+                    title={s.cu && s.cu.sets > 1 ? 'Full-size EGC in each parallel raceway' : undefined}
+                  >
+                    {s.egc ?? '—'}
                   </td>
                   <td>
                     {p ? (

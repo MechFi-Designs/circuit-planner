@@ -13,6 +13,7 @@ const load = (panelId: string, kind: LoadKind, amps: number, extra: Partial<Load
   kind,
   continuous: false,
   slot: null,
+  estAmps: null,
   locked: false,
   ...extra,
 });
@@ -21,6 +22,7 @@ function twoPanels(mode: AppState['mode'] = 'split'): AppState {
   const base: AppState = {
     mode,
     serviceA: 200,
+    optimizeAcrossPanels: true,
     panels: [{ id: 'main', name: 'Main', mainA: 200, fedFrom: null, spaces: 20, maxCircuits: 40 }],
     loads: [load('main', '120-1p', 20)],
   };
@@ -105,5 +107,96 @@ describe('subpanel feeders', () => {
     expect(parseFile(text)).toEqual(sanitize(s));
     expect(parseFile('{"nope":1}')).toBeNull();
     expect(parseFile('not json')).toBeNull();
+  });
+});
+
+describe('estimated load and kW', () => {
+  it('estimates default to max and roll up through feeders', () => {
+    const s = twoPanels();
+    const sub = s.panels[1].id;
+    const withEst = {
+      ...s,
+      loads: s.loads.map((l) => (l.panelId === sub && !l.feeds ? { ...l, estAmps: 10 } : l)),
+    };
+    const d = derive(withEst);
+    // Main: own 20 A (no estimate → max) on A; sub: 30 A 240 V circuit estimated at 10 A.
+    expect(d.service.est).toMatchObject({ A: 30, B: 10 });
+    expect(d.serviceKw.max).toBeCloseTo(2.4 + 7.2);
+    expect(d.serviceKw.est).toBeCloseTo(2.4 + 2.4);
+    const feeder = withEst.loads.find((l) => l.feeds)!;
+    expect(d.sizing.get(feeder.id)!.kw).toBeCloseTo(7.2);
+  });
+});
+
+describe('optimizing across panels', () => {
+  function serviceFedPair(): AppState {
+    let s = twoPanels();
+    s = reducer(s, { type: 'setFedFrom', id: s.panels[1].id, fedFrom: null });
+    s = reducer(s, { type: 'updatePanel', id: s.panels[1].id, patch: { mainA: 200 } });
+    // Put everything in the main panel; the second panel is empty.
+    const sub = s.panels[1].id;
+    return {
+      ...s,
+      serviceA: 400,
+      loads: [
+        ...s.loads.filter((l) => l.panelId !== sub),
+        load('main', '240-2p', 40),
+        load('main', '240-2p', 40),
+        load('main', '240-2p', 30),
+      ],
+    };
+  }
+
+  it('moves circuits from a loaded panel to an empty service-fed panel', () => {
+    const s = serviceFedPair();
+    const res = optimizeAll(s);
+    expect(res.moved.length).toBeGreaterThan(0);
+    const after = { ...s, loads: res.loads! };
+    const d = derive(after);
+    const util = (id: string) => Math.max(d.totals.get(id)!.worst.A, d.totals.get(id)!.worst.B);
+    const before = derive(s);
+    expect(util('main')).toBeLessThan(Math.max(before.totals.get('main')!.worst.A, before.totals.get('main')!.worst.B));
+  });
+
+  it('does not move circuits when turned off', () => {
+    const res = optimizeAll({ ...serviceFedPair(), optimizeAcrossPanels: false });
+    expect(res.moved).toEqual([]);
+    expect(res.crossPanelNoGain).toBe(false);
+  });
+
+  it('never moves locked circuits', () => {
+    const s = serviceFedPair();
+    const locked = { ...s, loads: s.loads.map((l) => (l.feeds ? l : { ...l, locked: true, slot: null })) };
+    expect(optimizeAll(locked).moved).toEqual([]);
+  });
+
+  it('does not push circuits into a subpanel, since its load still flows through the parent', () => {
+    const s = twoPanels();
+    const res = optimizeAll({ ...s, loads: [...s.loads, load('main', '240-2p', 40), load('main', '240-2p', 40)] });
+    expect(res.moved).toEqual([]);
+    expect(res.crossPanelNoGain).toBe(true);
+  });
+
+  it('moves circuits out of an overloaded subpanel into its parent', () => {
+    const s = twoPanels();
+    const sub = s.panels[1].id;
+    const tight = reducer(
+      { ...s, loads: [...s.loads, load(sub, '240-2p', 30)] },
+      { type: 'updatePanel', id: sub, patch: { mainA: 40 } },
+    );
+    const res = optimizeAll(tight);
+    expect(res.moved.map((m) => m.to)).toEqual(['Main']);
+  });
+
+  it('stays fast on a large design', () => {
+    let s = twoPanels();
+    s = reducer(s, { type: 'addPanel' });
+    s = reducer(s, { type: 'setFedFrom', id: s.panels[2].id, fedFrom: null });
+    const big = Array.from({ length: 60 }, (_, i) =>
+      load(s.panels[i % 3].id, i % 4 === 0 ? '240-2p' : '120-1p', 5 + (i % 7) * 3),
+    );
+    const t0 = performance.now();
+    optimizeAll({ ...s, serviceA: 400, loads: [...s.loads, ...big] });
+    expect(performance.now() - t0).toBeLessThan(2000);
   });
 });

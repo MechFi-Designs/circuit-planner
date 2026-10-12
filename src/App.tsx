@@ -37,15 +37,23 @@ export default function App() {
 
   const optimize = () => {
     const res = optimizeAll(state);
-    if (res.slots.size) {
-      dispatch({ type: 'applySlots', slots: res.slots });
-      const parts = MODE_PHASES[state.mode].map((ph) => `${ph} ${fmtA(res.before[ph])}→${fmtA(res.after[ph])}`);
-      setNotice({ kind: 'ok', text: `Rebalanced service (worst-case A): ${parts.join(' · ')}` });
-    } else if (res.failed.length) {
-      setNotice({ kind: 'bad', text: `Couldn't fit all circuits around locked ones in ${res.failed.join(', ')}.` });
-    } else {
-      setNotice({ kind: 'info', text: 'Already as balanced as it gets with the current locks.' });
+    const parts = MODE_PHASES[state.mode].map((ph) => `${ph} ${fmtA(res.before[ph])}→${fmtA(res.after[ph])}`);
+    const lines: string[] = [];
+    if (res.moved.length) {
+      const list = res.moved.map((m) => `${m.name} (${m.from} → ${m.to})`).join(', ');
+      lines.push(`Moved ${res.moved.length} circuit${res.moved.length > 1 ? 's' : ''} between panels: ${list}.`);
     }
+    const phasesChanged = MODE_PHASES[state.mode].some((ph) => Math.abs(res.before[ph] - res.after[ph]) > 0.05);
+    if (res.loads && phasesChanged) lines.push(`Service phases (worst-case A): ${parts.join(' · ')}.`);
+    if (res.crossPanelNoGain) {
+      lines.push(
+        'No circuits needed to move between panels. A subpanel’s load still flows through the panel feeding it, so moving circuits there doesn’t lower that panel’s or the service’s load.',
+      );
+    }
+    if (res.failed.length) lines.push(`Couldn't fit all circuits around locked ones in ${res.failed.join(', ')}.`);
+    if (res.loads) dispatch({ type: 'setLoads', loads: res.loads });
+    else if (!res.failed.length) lines.unshift('Already as balanced as it gets with the current locks.');
+    setNotice({ kind: res.failed.length ? 'bad' : res.loads ? 'ok' : 'info', text: lines.join(' ') });
   };
 
   const openFile = async (file: File) => {

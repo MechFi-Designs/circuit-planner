@@ -24,6 +24,7 @@ export function newLoad(panelId: string, mode: ServiceMode, patch: Partial<Load>
     panelId,
     name: '',
     amps: 0,
+    estAmps: null,
     kind: '120-1p',
     continuous: false,
     slot: null,
@@ -35,21 +36,22 @@ export function newLoad(panelId: string, mode: ServiceMode, patch: Partial<Load>
 
 export function defaultState(): AppState {
   const panel = newPanel(0);
-  const mk = (name: string, amps: number, kind: LoadKind, continuous = false) =>
-    newLoad(panel.id, 'split', { name, amps, kind, continuous });
+  const mk = (name: string, amps: number, kind: LoadKind, estAmps: number | null, continuous = false) =>
+    newLoad(panel.id, 'split', { name, amps, kind, estAmps, continuous });
   return {
     mode: 'split',
     serviceA: 200,
+    optimizeAcrossPanels: true,
     panels: [panel],
     loads: [
-      mk('Kitchen counter 1', 16, '120-1p'),
-      mk('Kitchen counter 2', 16, '120-1p'),
-      mk('Range', 40, '240-2p'),
-      mk('Dryer', 24, '240-2p'),
-      mk('EV charger', 40, '240-2p', true),
-      mk('Water heater', 18.75, '240-2p', true),
-      mk('Bedroom lights', 8, '120-1p'),
-      mk('Bathroom', 16, '120-1p'),
+      mk('Kitchen counter 1', 16, '120-1p', 4),
+      mk('Kitchen counter 2', 16, '120-1p', 4),
+      mk('Range', 40, '240-2p', 12),
+      mk('Dryer', 24, '240-2p', 10),
+      mk('EV charger', 40, '240-2p', null, true),
+      mk('Water heater', 18.75, '240-2p', 9, true),
+      mk('Bedroom lights', 8, '120-1p', 2),
+      mk('Bathroom', 16, '120-1p', 3),
     ],
   };
 }
@@ -64,7 +66,8 @@ export type Action =
   | { type: 'addLoad'; panelId: string }
   | { type: 'updateLoad'; id: string; patch: Partial<Load> }
   | { type: 'removeLoad'; id: string }
-  | { type: 'applySlots'; slots: Map<string, number> }
+  | { type: 'setLoads'; loads: Load[] }
+  | { type: 'setOptimizeAcrossPanels'; on: boolean }
   | { type: 'clearLoads' }
   | { type: 'replace'; state: AppState };
 
@@ -150,11 +153,10 @@ function apply(state: AppState, action: Action): AppState {
       };
     case 'removeLoad':
       return { ...state, loads: state.loads.filter((l) => l.id !== action.id) };
-    case 'applySlots':
-      return {
-        ...state,
-        loads: state.loads.map((l) => (action.slots.has(l.id) ? { ...l, slot: action.slots.get(l.id)! } : l)),
-      };
+    case 'setLoads':
+      return { ...state, loads: action.loads };
+    case 'setOptimizeAcrossPanels':
+      return { ...state, optimizeAcrossPanels: action.on };
     case 'clearLoads':
       return { ...state, loads: state.loads.filter((l) => l.feeds) };
     case 'replace':
@@ -188,6 +190,7 @@ export function sanitize(raw: unknown): AppState | null {
         panelId: l.panelId as string,
         name: typeof l.name === 'string' ? l.name : '',
         amps: Math.max(0, num(l.amps, 0)),
+        estAmps: typeof l.estAmps === 'number' && Number.isFinite(l.estAmps) ? Math.max(0, l.estAmps) : null,
         kind: KINDS_BY_MODE[mode].includes(kind) ? kind : remapKind(kind, mode),
         continuous: l.continuous === true,
         slot: typeof l.slot === 'number' && l.slot >= 1 ? Math.round(l.slot) : null,
@@ -195,7 +198,13 @@ export function sanitize(raw: unknown): AppState | null {
         ...(typeof l.feeds === 'string' ? { feeds: l.feeds } : {}),
       };
     });
-  return syncFeeders({ mode, serviceA: num(r.serviceA, 200), panels, loads });
+  return syncFeeders({
+    mode,
+    serviceA: num(r.serviceA, 200),
+    optimizeAcrossPanels: r.optimizeAcrossPanels !== false,
+    panels,
+    loads,
+  });
 }
 
 function toBase64Url(text: string): string {

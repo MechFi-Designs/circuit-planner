@@ -3,7 +3,7 @@ import type { AppState, Panel } from '../types';
 import type { Derived } from '../lib/derive';
 import { maxPhase } from '../lib/loadCalc';
 import { MODE_PHASES, phaseOfSlot } from '../lib/nec';
-import { fmtA } from '../lib/sizing';
+import { fmtA, fmtKw } from '../lib/sizing';
 import { PhaseChip } from './PhaseChip';
 
 interface Props {
@@ -102,6 +102,8 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
 
   const worst = maxPhase(totals.worst, mode);
   const pct = panel.mainA ? (worst / panel.mainA) * 100 : 0;
+  const estPct = panel.mainA ? (maxPhase(totals.est, mode) / panel.mainA) * 100 : 0;
+  const kw = derived.kw.get(panel.id)!;
 
   return (
     <section className="card panel-card">
@@ -118,9 +120,16 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
             <PhaseChip phase={p} /> {fmtA(totals.worst[p])} A
           </span>
         ))}
-        <span className={`pct ${pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok'}`}>
-          {Math.round(pct)}% of {parent ? 'feeder' : 'main'}
+        <span className="pct-group">
+          <span className={`pct ${pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok'}`}>{Math.round(pct)}%</span>
+          <span className="muted">
+            {' '}
+            · est {Math.round(estPct)}% of {parent ? 'feeder' : 'main'}
+          </span>
         </span>
+      </div>
+      <div className="muted panel-kw">
+        {fmtKw(kw.max)} kW max · {fmtKw(kw.est)} kW typical
       </div>
       <div className="panel-frame">
         <div className="panel-main">

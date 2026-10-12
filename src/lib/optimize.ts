@@ -1,8 +1,8 @@
 import type { AppState, Load, Panel, ServiceMode } from '../types';
 import { derive, feederTotals, postOrder } from './derive';
 import { MODE_PHASES, phaseOfSlot, polesOf } from './nec';
-import { Board, spanOf, type PanelLayout } from './placement';
-import { phaseTotals, worstAmps, zeroPhases, type PhaseAmps, type PhaseTotals } from './loadCalc';
+import { Board, layoutPanel, spanOf, type PanelLayout } from './placement';
+import { imbalance, maxPhase, phaseTotals, worstAmps, zeroPhases, type PhaseAmps, type PhaseTotals } from './loadCalc';
 
 export interface OptimizeResult {
   /** New starting slot for each movable load. Empty when nothing changed. */
@@ -27,13 +27,7 @@ function score(amps: PhaseAmps, mode: ServiceMode): Score {
 }
 
 /** Lexicographic: lower highest phase, then lower spread, then lower sum of squares. */
-function better(a: Score, b: Score): boolean {
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] < b[i] - EPS) return true;
-    if (a[i] > b[i] + EPS) return false;
-  }
-  return false;
-}
+const better = (a: Score, b: Score) => betterVec(a, b);
 
 /**
  * Re-slot unlocked circuits in a panel to balance worst-case phase current.
@@ -208,20 +202,24 @@ export function optimizePanel(
 }
 
 export interface OptimizeAllResult {
-  slots: Map<string, number>;
+  /** New loads array, or null when nothing changed. */
+  loads: Load[] | null;
   before: PhaseAmps;
   after: PhaseAmps;
+  /** Circuits moved to a different panel. */
+  moved: { name: string; from: string; to: string }[];
   /** Names of panels whose circuits couldn't all be fit around locked ones. */
   failed: string[];
+  /** Cross-panel moves were allowed but none would lower any panel's or the service's load. */
+  crossPanelNoGain: boolean;
 }
 
 /**
- * Optimize every panel, subpanels first, so each parent sees its subpanels'
- * rebalanced totals through their feeders.
+ * Optimize slots in every panel, subpanels first, so each parent sees its
+ * subpanels' rebalanced totals through their feeders.
  */
-export function optimizeAll(state: AppState): OptimizeAllResult {
+function optimizeSlots(state: AppState): { state: AppState; failed: string[] } {
   let working = state;
-  const slots = new Map<string, number>();
   const failed: string[] = [];
   for (const p of postOrder(state.panels)) {
     const d = derive(working);
@@ -229,11 +227,160 @@ export function optimizeAll(state: AppState): OptimizeAllResult {
     const res = optimizePanel(p, loads, state.mode, d.layouts.get(p.id)!, feederTotals(d, loads));
     if (res.failed) failed.push(p.name);
     if (!res.improved) continue;
-    res.slots.forEach((s, id) => slots.set(id, s));
     working = {
       ...working,
       loads: working.loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l)),
     };
   }
-  return { slots, before: derive(state).service.worst, after: derive(working).service.worst, failed };
+  return { state: working, failed };
+}
+
+/** Utilization below this is fine; the optimizer doesn't chase it lower. */
+const COMFORTABLE_UTIL = 0.8;
+
+/**
+ * Peak utilization across the service and every panel's main/feeder (clipped at
+ * 80%), plus the spread among panels fed straight from the service. Subpanels
+ * are left out of the spread term: emptying or filling one never relieves its
+ * parent, so circuits only move in or out of a subpanel to get it under 80%.
+ */
+function utilScore(state: AppState, panelAmps: (p: Panel) => number, serviceAmps: number): number[] {
+  const all: number[] = [];
+  const roots: number[] = [];
+  for (const p of state.panels) {
+    if (p.mainA <= 0) continue;
+    const u = panelAmps(p) / p.mainA;
+    all.push(u);
+    if (!p.fedFrom) roots.push(u);
+  }
+  if (state.serviceA > 0) all.push(serviceAmps / state.serviceA);
+  return [Math.max(COMFORTABLE_UTIL, ...all), roots.reduce((s, u) => s + u * u, 0)];
+}
+
+/** Whole-design score: fewest circuits that don't fit, then utilization, then the most even service phases. */
+function designScore(state: AppState): number[] {
+  const d = derive(state);
+  const peak = (amps: PhaseAmps) => maxPhase(amps, state.mode);
+  const unplaced = [...d.layouts.values()].reduce((n, l) => n + l.unplaced.length, 0);
+  return [
+    unplaced,
+    ...utilScore(state, (p) => peak(d.totals.get(p.id)!.worst), peak(d.service.worst)),
+    imbalance(d.service.worst, state.mode),
+  ];
+}
+
+/**
+ * Move unlocked circuits between panels to lower the peak utilization. Uses
+ * phase-averaged current (phase balance is handled afterwards by slot
+ * optimization) and only accepts a move if the circuit still fits.
+ */
+function reassignPanels(state: AppState): AppState {
+  const { mode } = state;
+  const nPhases = MODE_PHASES[mode].length;
+  const avg = (l: Load) => (worstAmps(l) * polesOf(l.kind)) / nPhases;
+  const movable = state.loads.filter((l) => !l.locked && !l.feeds && l.amps > 0);
+  if (!movable.length) return state;
+
+  const assign = new Map(state.loads.map((l) => [l.id, l.panelId]));
+  const own = new Map(state.panels.map((p) => [p.id, 0]));
+  for (const l of state.loads) if (!l.feeds) own.set(l.panelId, own.get(l.panelId)! + avg(l));
+  const order = postOrder(state.panels);
+
+  const score = (): number[] => {
+    const sub = new Map<string, number>();
+    for (const p of order) {
+      let t = own.get(p.id)!;
+      for (const c of state.panels) if (c.fedFrom === p.id) t += sub.get(c.id)!;
+      sub.set(p.id, t);
+    }
+    const service = state.panels.filter((p) => !p.fedFrom).reduce((t, p) => t + sub.get(p.id)!, 0);
+    return utilScore(state, (p) => sub.get(p.id)!, service);
+  };
+
+  const moved = new Set<string>();
+  const loadsIn = (panelId: string, extra?: Load) => {
+    const list = state.loads
+      .filter((l) => assign.get(l.id) === panelId)
+      .map((l) => (moved.has(l.id) ? { ...l, panelId, slot: null } : l));
+    return extra ? [...list, { ...extra, panelId, slot: null, locked: false }] : list;
+  };
+  const fits = (panel: Panel, l: Load) =>
+    layoutPanel(panel, loadsIn(panel.id, l), mode).unplaced.length <=
+    layoutPanel(panel, loadsIn(panel.id), mode).unplaced.length;
+
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    const cur = score();
+    const cands: { l: Load; to: Panel; sc: number[] }[] = [];
+    for (const l of movable) {
+      const from = assign.get(l.id)!;
+      for (const to of state.panels) {
+        if (to.id === from) continue;
+        own.set(from, own.get(from)! - avg(l));
+        own.set(to.id, own.get(to.id)! + avg(l));
+        const sc = score();
+        own.set(from, own.get(from)! + avg(l));
+        own.set(to.id, own.get(to.id)! - avg(l));
+        if (betterVec(sc, cur)) cands.push({ l, to, sc });
+      }
+    }
+    cands.sort((a, b) => (betterVec(a.sc, b.sc) ? -1 : betterVec(b.sc, a.sc) ? 1 : 0));
+    const pick = cands.find((c) => fits(c.to, c.l));
+    if (!pick) break;
+    const from = assign.get(pick.l.id)!;
+    own.set(from, own.get(from)! - avg(pick.l));
+    own.set(pick.to.id, own.get(pick.to.id)! + avg(pick.l));
+    assign.set(pick.l.id, pick.to.id);
+    moved.add(pick.l.id);
+  }
+  if (!moved.size) return state;
+  return {
+    ...state,
+    loads: state.loads.map((l) =>
+      assign.get(l.id) !== l.panelId ? { ...l, panelId: assign.get(l.id)!, slot: null, locked: false } : l,
+    ),
+  };
+}
+
+/** Lexicographic comparison with a small tolerance. */
+function betterVec(a: number[], b: number[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < b[i] - EPS) return true;
+    if (a[i] > b[i] + EPS) return false;
+  }
+  return false;
+}
+
+/** Optimize the whole design: optionally move circuits between panels, then balance slots. */
+export function optimizeAll(state: AppState): OptimizeAllResult {
+  let best = optimizeSlots(state);
+  const crossAllowed = state.optimizeAcrossPanels && state.panels.length > 1;
+  if (crossAllowed) {
+    const reassigned = reassignPanels(state);
+    if (reassigned !== state) {
+      const cand = optimizeSlots(reassigned);
+      if (betterVec(designScore(cand.state), designScore(best.state))) best = cand;
+    }
+  }
+
+  const original = new Map(state.loads.map((l) => [l.id, l]));
+  const panelName = new Map(state.panels.map((p) => [p.id, p.name]));
+  const changed = best.state.loads.some((l) => {
+    const o = original.get(l.id)!;
+    return o.panelId !== l.panelId || o.slot !== l.slot;
+  });
+  const moved = best.state.loads
+    .filter((l) => original.get(l.id)!.panelId !== l.panelId)
+    .map((l) => ({
+      name: l.name || 'Unnamed',
+      from: panelName.get(original.get(l.id)!.panelId)!,
+      to: panelName.get(l.panelId)!,
+    }));
+  return {
+    loads: changed ? best.state.loads : null,
+    before: derive(state).service.worst,
+    after: derive(best.state).service.worst,
+    moved,
+    failed: best.failed,
+    crossPanelNoGain: crossAllowed && moved.length === 0,
+  };
 }
