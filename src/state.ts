@@ -1,6 +1,7 @@
 import type { AppState, Device, Load, LoadKind, Panel, ServiceMode } from './types';
 import { feederKind, KINDS, KINDS_BY_MODE, remapKind } from './lib/nec';
 import { isWithin } from './lib/derive';
+import { optimizeAll } from './lib/optimize';
 
 const STORAGE_KEY = 'circuit-planner:v1';
 const SHARE_PARAM = 's';
@@ -38,9 +39,14 @@ export function newLoad(panelId: string, mode: ServiceMode, patch: Partial<Load>
 
 export function defaultState(): AppState {
   const panel = newPanel(0);
-  const mk = (name: string, amps: number, kind: LoadKind, estAmps: number | null, continuous = false) =>
-    newLoad(panel.id, 'split', { name, amps, kind, estAmps, continuous });
-  return {
+  const mk = (
+    name: string,
+    amps: number,
+    kind: LoadKind,
+    estAmps: number | null,
+    opts: { continuous?: boolean; tandem?: boolean } = {},
+  ) => newLoad(panel.id, 'split', { name, amps, kind, estAmps, continuous: !!opts.continuous, tandem: !!opts.tandem });
+  const example: AppState = {
     mode: 'split',
     serviceA: 200,
     optimizeAcrossPanels: true,
@@ -50,12 +56,21 @@ export function defaultState(): AppState {
       mk('Kitchen counter 2', 16, '120-1p', 4),
       mk('Range', 40, '240-2p', 12),
       mk('Dryer', 24, '240-2p', 10),
-      mk('EV charger', 40, '240-2p', null, true),
-      mk('Water heater', 18.75, '240-2p', 9, true),
-      mk('Bedroom lights', 8, '120-1p', 2),
+      mk('EV charger', 32, '240-2p', null, { continuous: true }),
+      mk('Water heater', 18.75, '240-2p', 9, { continuous: true }),
       mk('Bathroom', 16, '120-1p', 3),
+      // Lighting and general outlets on tandem breakers, two to a space.
+      mk('Bedroom lights', 8, '120-1p', 2, { tandem: true }),
+      mk('Hallway lights', 5, '120-1p', 1.5, { tandem: true }),
+      mk('Living room outlets', 12, '120-1p', 3, { tandem: true }),
+      mk('Bedroom outlets', 10, '120-1p', 2, { tandem: true }),
+      mk('Porch & exterior lights', 4, '120-1p', 2, { tandem: true }),
+      mk('Garage outlets', 12, '120-1p', 1, { tandem: true }),
     ],
   };
+  // Start from a phase-balanced layout.
+  const optimized = optimizeAll(example).loads;
+  return optimized ? { ...example, loads: optimized } : example;
 }
 
 export type Action =
