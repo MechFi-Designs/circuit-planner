@@ -309,7 +309,7 @@ function reassignPanels(state: AppState): AppState {
   const { mode } = state;
   const nPhases = MODE_PHASES[mode].length;
   const avg = (l: Load) => (worstAmps(l) * polesOf(l.kind)) / nPhases;
-  const movable = state.loads.filter((l) => !l.locked && !l.feeds && l.amps > 0);
+  const movable = state.loads.filter((l) => !l.locked && !l.feeds && worstAmps(l) > 0);
   if (!movable.length) return state;
 
   const assign = new Map(state.loads.map((l) => [l.id, l.panelId]));

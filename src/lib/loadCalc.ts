@@ -1,5 +1,5 @@
-import type { Load, Phase, ServiceMode } from '../types';
-import { CONTINUOUS_FACTOR, MODE_PHASES } from './nec';
+import type { Load, LoadKind, Phase, ServiceMode } from '../types';
+import { CONTINUOUS_FACTOR, KINDS, MODE_PHASES } from './nec';
 import type { Placement } from './placement';
 
 export type PhaseAmps = Record<Phase, number>;
@@ -17,12 +17,51 @@ export const zeroPhases = (): PhaseAmps => ({ A: 0, B: 0, C: 0 });
 
 export const zeroTotals = (): PhaseTotals => ({ connected: zeroPhases(), worst: zeroPhases(), est: zeroPhases() });
 
-export function worstAmps(load: Load): number {
-  return load.amps * (load.continuous ? CONTINUOUS_FACTOR : 1);
+export interface CircuitAmps {
+  /** Max current (sum of device max when the circuit has devices). */
+  max: number;
+  /** Design current: 125% of continuous + 100% of non-continuous load. */
+  worst: number;
+  /** Estimated typical running current. */
+  est: number;
+  /** Any of the load is continuous. */
+  continuous: boolean;
 }
 
+/** Current of one device line (qty × per-unit value) on a circuit of this type. */
+export function deviceAmps(kind: LoadKind, value: number, unit: 'W' | 'A', qty: number): number {
+  const v = Math.max(0, value) * Math.max(0, qty);
+  return unit === 'A' ? v : v / volts(kind);
+}
+
+/** Effective volts for converting watts to line current (√3·V for 3-phase). */
+const volts = (kind: LoadKind) => KINDS[kind].volts * (KINDS[kind].poles === 3 ? Math.sqrt(3) : 1);
+
+/** A circuit's currents, from its devices if it has any, otherwise from its own fields. */
+export function circuitAmps(load: Load): CircuitAmps {
+  if (!load.devices?.length) {
+    return {
+      max: load.amps,
+      worst: load.amps * (load.continuous ? CONTINUOUS_FACTOR : 1),
+      est: load.estAmps ?? load.amps,
+      continuous: load.continuous,
+    };
+  }
+  const out: CircuitAmps = { max: 0, worst: 0, est: 0, continuous: false };
+  for (const dv of load.devices) {
+    const max = deviceAmps(load.kind, dv.max, dv.unit, dv.qty);
+    out.max += max;
+    out.worst += max * (dv.continuous ? CONTINUOUS_FACTOR : 1);
+    out.est += deviceAmps(load.kind, dv.est ?? dv.max, dv.unit, dv.qty);
+    out.continuous ||= dv.continuous;
+  }
+  return out;
+}
+
+export const worstAmps = (load: Load) => circuitAmps(load).worst;
+
 /** Estimated running current, defaulting to the max. */
-export const estOf = (load: Load) => load.estAmps ?? load.amps;
+export const estOf = (load: Load) => circuitAmps(load).est;
 
 /**
  * Per-phase current. Each circuit's line current is added to every phase its
@@ -49,9 +88,10 @@ export function phaseTotals(
     const p = placements.get(l.id);
     if (!p) continue;
     for (const ph of p.phases) {
-      connected[ph] += l.amps;
-      worst[ph] += worstAmps(l);
-      est[ph] += estOf(l);
+      const c = circuitAmps(l);
+      connected[ph] += c.max;
+      worst[ph] += c.worst;
+      est[ph] += c.est;
     }
   }
   return { connected, worst, est };

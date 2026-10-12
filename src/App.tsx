@@ -11,10 +11,21 @@ import { ServiceConfig } from './components/ServiceConfig';
 import { PanelDiagram } from './components/PanelDiagram';
 import { LoadTable } from './components/LoadTable';
 import { SummaryBar } from './components/SummaryBar';
+import { DevicesView } from './components/DevicesView';
 
 interface Notice {
   kind: 'ok' | 'info' | 'bad';
   text: string;
+}
+
+type Tab = 'panels' | 'devices';
+const TAB_KEY = 'circuit-planner:tab';
+function readTab(): Tab {
+  try {
+    return localStorage.getItem(TAB_KEY) === 'devices' ? 'devices' : 'panels';
+  } catch {
+    return 'panels';
+  }
 }
 
 // Read once: initialState() consumes the share-link hash, and StrictMode calls reducer initializers twice.
@@ -24,6 +35,18 @@ export default function App() {
   const [state, dispatch] = useReducer(reducer, bootState);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [tab, setTab] = useState<Tab>(readTab);
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_KEY, tab);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [tab]);
+  const openDevices = (id: string) => {
+    setSelectedId(id);
+    setTab('devices');
+  };
 
   useEffect(() => persist(state), [state]);
 
@@ -168,7 +191,36 @@ export default function App() {
 
       <SummaryBar state={state} derived={derived} advice={advice} />
 
-      <main className="layout">
+      <nav className="tabs" role="tablist" aria-label="View">
+        {(
+          [
+            ['panels', 'Panels & loads'],
+            ['devices', 'Devices'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? 'on' : ''}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === 'devices' && (
+        <DevicesView
+          state={state}
+          dispatch={dispatch}
+          derived={derived}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
+      )}
+
+      <main className="layout" hidden={tab !== 'panels'}>
         <div className="col-left">
           <ServiceConfig state={state} dispatch={dispatch} />
           {state.panels.map((p) => (
@@ -190,6 +242,7 @@ export default function App() {
             selectedId={selectedId}
             onSelect={setSelectedId}
             onOptimize={optimize}
+            onOpenDevices={openDevices}
           />
         </div>
       </main>

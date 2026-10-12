@@ -1,4 +1,4 @@
-import { useEffect, useState, type InputHTMLAttributes } from 'react';
+import { useState, type InputHTMLAttributes } from 'react';
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: number | null;
@@ -9,16 +9,14 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> &
   live?: boolean;
 };
 
-/** Number input that keeps a local draft so clamping doesn't fight typing. */
+/**
+ * Number input that keeps a local draft only while it's being edited, so
+ * clamping doesn't fight typing. Otherwise it always shows the current value.
+ */
 export function NumInput({ value, onCommit, onClear, live, ...rest }: Props) {
   // Required fields show 0 as blank; optional ones (onClear) distinguish blank from 0.
   const display = (v: number | null) => (v == null || (v === 0 && !onClear) ? '' : String(v));
-  const [draft, setDraft] = useState(display(value));
-  const [focused, setFocused] = useState(false);
-
-  useEffect(() => {
-    if (!focused) setDraft(display(value));
-  }, [value, focused]);
+  const [draft, setDraft] = useState<string | null>(null);
 
   const commit = (text: string) => {
     if (text.trim() === '' && onClear) return onClear();
@@ -31,15 +29,15 @@ export function NumInput({ value, onCommit, onClear, live, ...rest }: Props) {
       type="number"
       inputMode="decimal"
       {...rest}
-      value={draft}
-      onFocus={() => setFocused(true)}
+      value={draft ?? display(value)}
+      onFocus={() => setDraft(display(value))}
       onChange={(e) => {
         setDraft(e.target.value);
         if (live) commit(e.target.value);
       }}
       onBlur={() => {
-        setFocused(false);
-        commit(draft);
+        if (draft != null) commit(draft);
+        setDraft(null);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();

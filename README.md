@@ -20,6 +20,12 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 - **Load table:** name, max current, circuit type, continuous flag, and an optional estimated running current for each circuit.
   - Split phase: 120 V 1Φ (1-pole) or 240 V 1Φ (2-pole).
   - 3-phase: 120 V 1Φ (1-pole), 208 V 1Φ (2-pole) or 208 V 3Φ (3-pole).
+- **Devices tab:** build a circuit up from what's actually on it. For each device you enter a name, quantity, max and estimated draw (in W or A), and whether it's continuous.
+  - Pick from common devices (fridge, microwave, space heater, …) to fill in typical wattages, then adjust to the nameplate.
+  - Once a circuit has devices, its Max A and Est. A are the sums of its devices.
+  - The breaker is sized for 125% of the continuous devices plus 100% of the rest.
+  - Watts convert at the circuit's voltage, using √3·V for 3-phase.
+  - The 🔌 button on each load-table row jumps to that circuit's devices.
 - **Automatic sizing:** for each circuit, the breaker, the copper THHN wire, the copper equipment ground (EGC), and its kW.
 - **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows.
 - **⚖ Optimize:** moves unlocked circuits between slots to even out the worst-case current on each phase. Locked circuits (🔒) stay where they are.

@@ -1,6 +1,6 @@
 import type { Load } from '../types';
-import { estOf } from './loadCalc';
-import { KINDS, kwOf, requiredAmpacity, sizeBreaker, sizeEgc, sizeWire, type WireResult } from './nec';
+import { circuitAmps } from './loadCalc';
+import { KINDS, kwOf, sizeBreaker, sizeEgc, sizeWire, type WireResult } from './nec';
 
 export interface LoadSizing {
   required: number;
@@ -16,7 +16,8 @@ export interface LoadSizing {
 }
 
 export function sizeLoad(load: Load): LoadSizing {
-  const required = requiredAmpacity(load.amps, load.continuous);
+  const amps = circuitAmps(load);
+  const required = amps.worst;
   const breaker = sizeBreaker(required);
   const cu = breaker ? sizeWire(breaker, 'cu') : null;
   return {
@@ -25,8 +26,8 @@ export function sizeLoad(load: Load): LoadSizing {
     poles: KINDS[load.kind].poles,
     cu,
     egc: breaker ? sizeEgc(breaker, cu) : null,
-    kw: kwOf(load.kind, load.amps),
-    estKw: kwOf(load.kind, estOf(load)),
+    kw: kwOf(load.kind, amps.max),
+    estKw: kwOf(load.kind, amps.est),
   };
 }
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AppState, Panel } from '../types';
 import type { Derived } from '../lib/derive';
-import { maxPhase } from '../lib/loadCalc';
+import { circuitAmps, maxPhase } from '../lib/loadCalc';
 import { MODE_PHASES, phaseOfSlot } from '../lib/nec';
 import { fmtA, fmtKw } from '../lib/sizing';
 import { exportPdf } from '../lib/pdf';
@@ -39,7 +39,7 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
         title={
           sub
             ? `Feeder to ${sub.name}: ${fmtA(s.required)} A worst-case phase`
-            : `${name} — ${fmtA(l.amps)} A${l.continuous ? ' continuous' : ''}`
+            : `${name} — ${fmtA(circuitAmps(l).max)} A${circuitAmps(l).continuous ? ' continuous' : ''}${l.devices.length ? ` · ${l.devices.length} device${l.devices.length > 1 ? 's' : ''}` : ''}`
         }
       >
         <span className="breaker-name">{name}</span>

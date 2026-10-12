@@ -14,6 +14,7 @@ const load = (kind: LoadKind, amps: number, extra: Partial<Load> = {}): Load => 
   kind,
   continuous: false,
   tandem: false,
+  devices: [],
   slot: null,
   estAmps: null,
   locked: false,

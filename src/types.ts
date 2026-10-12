@@ -18,6 +18,21 @@ export interface Panel {
   maxCircuits: number;
 }
 
+/** Something plugged into or wired to a circuit. */
+export interface Device {
+  id: string;
+  name: string;
+  qty: number;
+  /** Units for max/est: watts or amps. */
+  unit: 'W' | 'A';
+  /** Nameplate / max draw per unit. */
+  max: number;
+  /** Typical draw per unit; null = same as max. */
+  est: number | null;
+  /** Runs 3 h or more at a time (sized at 125%). */
+  continuous: boolean;
+}
+
 export interface Load {
   id: string;
   panelId: string;
@@ -34,6 +49,8 @@ export interface Load {
   slot: number | null;
   /** Locked circuits keep their slot when optimizing. */
   locked: boolean;
+  /** Devices on this circuit. When present they replace amps/estAmps/continuous. */
+  devices: Device[];
   /** Set on the feeder breaker that supplies a subpanel (its id). */
   feeds?: string;
 }

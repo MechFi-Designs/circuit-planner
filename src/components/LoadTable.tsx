@@ -2,7 +2,7 @@ import { useEffect, type Dispatch } from 'react';
 import type { AppState, Load, LoadKind, Panel } from '../types';
 import type { Action } from '../state';
 import type { Derived } from '../lib/derive';
-import { maxPhase } from '../lib/loadCalc';
+import { circuitAmps, maxPhase } from '../lib/loadCalc';
 import { formatWire, KINDS, KINDS_BY_MODE, type WireResult } from '../lib/nec';
 import { fmtA, fmtKw } from '../lib/sizing';
 import { NumInput } from './NumInput';
@@ -15,6 +15,7 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onOptimize: () => void;
+  onOpenDevices: (id: string) => void;
 }
 
 function wireTitle(w: WireResult | null, breaker: number | null): string | undefined {
@@ -23,7 +24,7 @@ function wireTitle(w: WireResult | null, breaker: number | null): string | undef
   return `75 °C: ${w.a75} A${per} — termination limit, governs (≥ ${breaker} A breaker)\n90 °C: ${w.a90} A${per} — THHN rating, use as the derating basis`;
 }
 
-export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOptimize }: Props) {
+export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOptimize, onOpenDevices }: Props) {
   const multiPanel = state.panels.length > 1;
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
           multiPanel={multiPanel}
           selectedId={selectedId}
           onSelect={onSelect}
+          onOpenDevices={onOpenDevices}
         />
       ))}
 
@@ -89,9 +91,19 @@ interface PanelLoadsProps {
   multiPanel: boolean;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  onOpenDevices: (id: string) => void;
 }
 
-function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, onSelect }: PanelLoadsProps) {
+function PanelLoads({
+  panel,
+  state,
+  dispatch,
+  derived,
+  multiPanel,
+  selectedId,
+  onSelect,
+  onOpenDevices,
+}: PanelLoadsProps) {
   const layout = derived.layouts.get(panel.id)!;
   const loads = state.loads.filter((l) => l.panelId === panel.id);
   const update = (id: string, patch: Partial<Load>) => dispatch({ type: 'updateLoad', id, patch });
@@ -125,6 +137,9 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
           <tbody>
             {loads.map((l) => {
               const s = derived.sizing.get(l.id)!;
+              const amps = circuitAmps(l);
+              const nDev = l.devices.length;
+              const devTitle = `Sum of ${nDev} device${nDev > 1 ? 's' : ''}; edit in the Devices tab`;
               const sub = derived.feederOf.get(l.id);
               const subEst = sub ? maxPhase(derived.totals.get(sub.id)!.est, state.mode) : 0;
               const p = layout.placements.get(l.id);
@@ -170,18 +185,34 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                         → {sub.name} feeder
                       </span>
                     ) : (
-                      <input
-                        value={l.name}
-                        placeholder="Circuit name"
-                        aria-label="Circuit name"
-                        onChange={(e) => update(l.id, { name: e.target.value })}
-                      />
+                      <span className="name-wrap">
+                        <input
+                          value={l.name}
+                          placeholder="Circuit name"
+                          aria-label="Circuit name"
+                          onChange={(e) => update(l.id, { name: e.target.value })}
+                        />
+                        <button
+                          className={`dev-btn${nDev ? ' has' : ''}`}
+                          title={nDev ? `${nDev} device${nDev > 1 ? 's' : ''}; open in Devices` : 'Add devices'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenDevices(l.id);
+                          }}
+                        >
+                          🔌{nDev ? ` ${nDev}` : ''}
+                        </button>
+                      </span>
                     )}
                   </td>
                   <td>
                     {sub ? (
                       <span className="num pad" title={`${sub.name} worst-case phase load`}>
                         {fmtA(s.required)}
+                      </span>
+                    ) : nDev ? (
+                      <span className="num pad derived" title={devTitle}>
+                        {fmtA(amps.max)}
                       </span>
                     ) : (
                       <NumInput
@@ -219,7 +250,9 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                     {!sub && (
                       <input
                         type="checkbox"
-                        checked={l.continuous}
+                        checked={amps.continuous}
+                        disabled={nDev > 0}
+                        title={nDev ? 'Set per device in the Devices tab' : undefined}
                         aria-label="Continuous"
                         onChange={(e) => update(l.id, { continuous: e.target.checked })}
                       />
@@ -247,6 +280,10 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                     {sub ? (
                       <span className="num pad" title={`${sub.name} estimated phase load`}>
                         {fmtA(subEst)}
+                      </span>
+                    ) : nDev ? (
+                      <span className="num pad derived" title={devTitle}>
+                        {fmtA(amps.est)}
                       </span>
                     ) : (
                       <NumInput

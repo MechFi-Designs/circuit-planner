@@ -1,4 +1,4 @@
-import type { AppState, Load, LoadKind, Panel, ServiceMode } from './types';
+import type { AppState, Device, Load, LoadKind, Panel, ServiceMode } from './types';
 import { feederKind, KINDS, KINDS_BY_MODE, remapKind } from './lib/nec';
 import { isWithin } from './lib/derive';
 
@@ -28,6 +28,7 @@ export function newLoad(panelId: string, mode: ServiceMode, patch: Partial<Load>
     kind: '120-1p',
     continuous: false,
     tandem: false,
+    devices: [],
     slot: null,
     locked: false,
     ...patch,
@@ -165,6 +166,25 @@ function apply(state: AppState, action: Action): AppState {
   }
 }
 
+export function newDevice(patch: Partial<Device> = {}): Device {
+  return { id: uid(), name: '', qty: 1, unit: 'W', max: 0, est: null, continuous: false, ...patch };
+}
+
+function sanitizeDevices(raw: unknown): Device[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((d) => d && typeof d === 'object')
+    .map((d: Record<string, unknown>) => ({
+      id: typeof d.id === 'string' ? d.id : uid(),
+      name: typeof d.name === 'string' ? d.name : '',
+      qty: Math.max(0, Math.round(num(d.qty, 1))),
+      unit: d.unit === 'A' ? 'A' : 'W',
+      max: Math.max(0, num(d.max, 0)),
+      est: typeof d.est === 'number' && Number.isFinite(d.est) ? Math.max(0, d.est) : null,
+      continuous: d.continuous === true,
+    }));
+}
+
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 /** Validate untrusted JSON (storage or share link) into a well-formed state. */
@@ -195,6 +215,7 @@ export function sanitize(raw: unknown): AppState | null {
         kind: KINDS_BY_MODE[mode].includes(kind) ? kind : remapKind(kind, mode),
         continuous: l.continuous === true,
         tandem: l.tandem === true,
+        devices: sanitizeDevices(l.devices),
         slot: typeof l.slot === 'number' && l.slot >= 1 ? Math.round(l.slot) : null,
         locked: l.locked === true,
         ...(typeof l.feeds === 'string' ? { feeds: l.feeds } : {}),
