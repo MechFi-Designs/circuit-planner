@@ -17,7 +17,7 @@ export interface LoadSizing {
 
 export function sizeLoad(load: Load): LoadSizing {
   const amps = circuitAmps(load);
-  const required = amps.worst;
+  const required = amps.design;
   const breaker = sizeBreaker(required);
   const cu = breaker ? sizeWire(breaker, 'cu') : null;
   return {

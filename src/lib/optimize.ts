@@ -2,7 +2,16 @@ import type { AppState, Load, Panel, ServiceMode } from '../types';
 import { derive, feederTotals, postOrder } from './derive';
 import { MODE_PHASES, phaseOfSlot, polesOf } from './nec';
 import { Board, layoutPanel, spanOf, tandemIds, type PanelLayout } from './placement';
-import { imbalance, maxPhase, phaseTotals, worstAmps, zeroPhases, type PhaseAmps, type PhaseTotals } from './loadCalc';
+import {
+  circuitAmps,
+  designAmps,
+  imbalance,
+  maxPhase,
+  phaseTotals,
+  zeroPhases,
+  type PhaseAmps,
+  type PhaseTotals,
+} from './loadCalc';
 
 export interface OptimizeResult {
   /** New starting slot for each movable load. Empty when nothing moved. */
@@ -30,7 +39,8 @@ function score(amps: PhaseAmps, mode: ServiceMode): Score {
 const better = (a: Score, b: Score) => betterVec(a, b);
 
 /**
- * Re-slot unlocked circuits in a panel to balance worst-case phase current.
+ * Re-slot unlocked circuits in a panel to balance real max phase current
+ * (the 125% continuous factor is a sizing margin, not extra current).
  * Greedy seed (largest first, best phase position) followed by local search
  * of single moves and same-pole-count swaps.
  *
@@ -45,7 +55,7 @@ export function optimizePanel(
   current: PanelLayout,
   feeders: Map<string, PhaseTotals> = new Map(),
 ): OptimizeResult {
-  const before = phaseTotals(loads, current.placements, feeders).worst;
+  const before = phaseTotals(loads, current.placements, feeders).max;
   const noChange = (failed: boolean): OptimizeResult => ({
     slots: new Map(),
     before,
@@ -61,10 +71,10 @@ export function optimizePanel(
   const add = (l: Load, start: number, sign: 1 | -1, target: PhaseAmps = amps) => {
     const fed = feeders.get(l.id);
     if (fed) {
-      for (const ph of MODE_PHASES[mode]) target[ph] += sign * fed.worst[ph];
+      for (const ph of MODE_PHASES[mode]) target[ph] += sign * fed.max[ph];
       return;
     }
-    const w = worstAmps(l);
+    const w = circuitAmps(l).max;
     for (const s of spanOf(start, polesOf(l.kind))) target[phaseOfSlot(s, mode)] += sign * w;
   };
 
@@ -82,7 +92,7 @@ export function optimizePanel(
   const movable = loads
     .map((l, i) => ({ l, i }))
     .filter(({ l }) => !l.locked)
-    .sort((a, b) => polesOf(b.l.kind) - polesOf(a.l.kind) || worstAmps(b.l) - worstAmps(a.l) || a.i - b.i)
+    .sort((a, b) => polesOf(b.l.kind) - polesOf(a.l.kind) || circuitAmps(b.l).max - circuitAmps(a.l).max || a.i - b.i)
     .map(({ l }) => l);
   if (!movable.length) return noChange(false);
 
@@ -263,7 +273,8 @@ function optimizeSlots(state: AppState): { state: AppState; failed: string[] } {
 const COMFORTABLE_UTIL = 0.8;
 
 /**
- * Utilization score, in priority order:
+ * Utilization score against ratings, using sizing current (continuous loads at
+ * 125%, as NEC 215.3 / 230.42 require for feeders and services). In priority order:
  * 1. Total overload: how far each panel (vs its main/feeder) and the service
  *    are over 100%, summed, so every overloaded panel gets relief.
  * 2. Peak utilization, clipped at 80% (lower than that is fine).
@@ -295,8 +306,8 @@ function designScore(state: AppState): number[] {
   const unplaced = [...d.layouts.values()].reduce((n, l) => n + l.unplaced.length, 0);
   return [
     unplaced,
-    ...utilScore(state, (p) => peak(d.totals.get(p.id)!.worst), peak(d.service.worst)),
-    imbalance(d.service.worst, state.mode),
+    ...utilScore(state, (p) => peak(d.totals.get(p.id)!.design), peak(d.service.design)),
+    imbalance(d.service.max, state.mode),
   ];
 }
 
@@ -308,8 +319,8 @@ function designScore(state: AppState): number[] {
 function reassignPanels(state: AppState): AppState {
   const { mode } = state;
   const nPhases = MODE_PHASES[mode].length;
-  const avg = (l: Load) => (worstAmps(l) * polesOf(l.kind)) / nPhases;
-  const movable = state.loads.filter((l) => !l.locked && !l.feeds && worstAmps(l) > 0);
+  const avg = (l: Load) => (designAmps(l) * polesOf(l.kind)) / nPhases;
+  const movable = state.loads.filter((l) => !l.locked && !l.feeds && designAmps(l) > 0);
   if (!movable.length) return state;
 
   const assign = new Map(state.loads.map((l) => [l.id, l.panelId]));
@@ -408,8 +419,8 @@ export function optimizeAll(state: AppState): OptimizeAllResult {
     }));
   return {
     loads: changed ? best.state.loads : null,
-    before: derive(state).service.worst,
-    after: derive(best.state).service.worst,
+    before: derive(state).service.max,
+    after: derive(best.state).service.max,
     moved,
     failed: best.failed,
     crossPanelNoGain: crossAllowed && moved.length === 0,

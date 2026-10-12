@@ -10,8 +10,8 @@ const list = (names: string[]) =>
 export function isOverloaded(state: AppState, d: Derived): boolean {
   const peak = (amps: Parameters<typeof maxPhase>[0]) => maxPhase(amps, state.mode);
   return (
-    (state.serviceA > 0 && peak(d.service.worst) > state.serviceA) ||
-    state.panels.some((p) => p.mainA > 0 && peak(d.totals.get(p.id)!.worst) > p.mainA)
+    (state.serviceA > 0 && peak(d.service.design) > state.serviceA) ||
+    state.panels.some((p) => p.mainA > 0 && peak(d.totals.get(p.id)!.design) > p.mainA)
   );
 }
 
@@ -23,19 +23,26 @@ export function optimizePreview(state: AppState, d: Derived): Derived | null {
 }
 
 /**
- * One message per overloaded panel (and the service) saying by how much and
+ * One message per panel (and the service) whose sizing load (continuous loads
+ * at 125%, which is what ratings must cover) exceeds its rating, saying by how much and
  * what would fix it: Optimize (with its predicted result), re-feeding
  * subpanels from the service, unlocking circuits, or a bigger rating.
  */
 export function overloadAdvice(state: AppState, d: Derived, preview: Derived | null): string[] {
   const { mode } = state;
-  const peak = (dd: Derived, id: string) => maxPhase(dd.totals.get(id)!.worst, mode);
+  const peak = (dd: Derived, id: string) => maxPhase(dd.totals.get(id)!.design, mode);
   const out: string[] = [];
 
-  const svc = maxPhase(d.service.worst, mode);
+  /** "has a 150 A max load (180 A for sizing, with continuous loads at 125%)" */
+  const describe = (max: number, sizing: number) =>
+    sizing > max + 0.05
+      ? `has a ${fmtA(max)} A max load, but sizing counts continuous loads at 125% (${fmtA(sizing)} A)`
+      : `has a ${fmtA(max)} A max load`;
+
+  const svc = maxPhase(d.service.design, mode);
   if (state.serviceA > 0 && svc > state.serviceA) {
     out.push(
-      `Total worst-case load is ${fmtA(svc - state.serviceA)} A over the ${state.serviceA} A service. Moving circuits around can't fix that: the service has to be bigger or the load smaller.`,
+      `The service ${describe(maxPhase(d.service.max, mode), svc)}, ${fmtA(svc - state.serviceA)} A more than its ${state.serviceA} A rating. Moving circuits around can't fix that: the service has to be bigger or the load smaller.`,
     );
   }
 
@@ -44,12 +51,12 @@ export function overloadAdvice(state: AppState, d: Derived, preview: Derived | n
     if (!(p.mainA > 0) || load <= p.mainA) continue;
     const what = p.fedFrom ? 'feeder' : 'main';
     const parts = [
-      `${p.name} is ${fmtA(load - p.mainA)} A over its ${p.mainA} A ${what} (${fmtA(load)} A worst case).`,
+      `${p.name} ${describe(maxPhase(d.totals.get(p.id)!.max, mode), load)}, ${fmtA(load - p.mainA)} A more than its ${p.mainA} A ${what}.`,
     ];
 
     const after = preview ? peak(preview, p.id) : load;
     if (after < load - 0.05) {
-      parts.push(`⚖ Optimize can bring it to ${Math.round((after / p.mainA) * 100)}%.`);
+      parts.push(`⚖ Optimize can bring it to ${Math.round((after / p.mainA) * 100)}% of its rating.`);
     }
     if (after > p.mainA) {
       const children = state.panels.filter((c) => c.fedFrom === p.id);

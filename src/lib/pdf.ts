@@ -241,26 +241,26 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
   const perPhase = (amps: Record<string, number>) => phases.map((p) => `${p} ${fmtA(amps[p])} A`).join('   ');
   let fy = tableBottom + 18;
   doc.setTextColor(INK).setFont('helvetica', 'bold').setFontSize(9);
-  doc.text('Worst-case load', MARGIN, fy);
-  doc.text('Estimated load', MARGIN, fy + 13);
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    latin1(`${perPhase(totals.worst)}${pct(maxPhase(totals.worst, mode))}  ·  ${fmtKw(kw.max)} kW`),
-    MARGIN + 80,
-    fy,
-  );
-  doc.text(
-    latin1(`${perPhase(totals.est)}${pct(maxPhase(totals.est, mode))}  ·  ${fmtKw(kw.est)} kW`),
-    MARGIN + 80,
-    fy + 13,
-  );
+  const sizing = maxPhase(totals.design, mode);
+  const rowsOut: [string, string][] = [
+    ['Max load', `${perPhase(totals.max)}${pct(maxPhase(totals.max, mode))}  ·  ${fmtKw(kw.max)} kW`],
+    ['Estimated load', `${perPhase(totals.est)}${pct(maxPhase(totals.est, mode))}  ·  ${fmtKw(kw.est)} kW`],
+  ];
+  if (sizing > maxPhase(totals.max, mode) + 0.05) {
+    rowsOut.push(['Sizing load', `${fmtA(sizing)} A${pct(sizing)}  ·  continuous loads at 125%`]);
+  }
+  rowsOut.forEach(([label, text], i) => {
+    doc.setFont('helvetica', 'bold').text(label, MARGIN, fy + i * 13);
+    doc.setFont('helvetica', 'normal').text(latin1(text), MARGIN + 80, fy + i * 13);
+  });
 
-  fy += 30;
+  fy += rowsOut.length * 13 + 4;
   doc.setFontSize(7).setTextColor(FAINT);
   const notes = doc.splitTextToSize(
-    'Breakers sized at 125% of continuous load. Wire is copper THHN sized to the breaker at the 75 °C terminal rating ' +
-      '(NEC 110.14(C), 240.4(D)); derate for ambient temperature, conduit fill, and voltage drop as needed. ' +
-      'Worst-case load counts every circuit at its max current; downstream subpanels are included. ' +
+    'Breakers and wire are sized for 125% of continuous load plus 100% of the rest (a sizing margin, not extra current). ' +
+      'Wire is copper THHN sized to the breaker at the 75 °C terminal rating (NEC 110.14(C), 240.4(D)); derate for ' +
+      'ambient temperature, conduit fill, and voltage drop as needed. Max load counts every circuit at its max current; ' +
+      'downstream subpanels are included. ' +
       'Planning aid only: verify with your AHJ and a licensed electrician.',
     CONTENT_W,
   ) as string[];

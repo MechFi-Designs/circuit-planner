@@ -38,7 +38,7 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
         onClick={() => onSelect(selectedId === id ? null : id)}
         title={
           sub
-            ? `Feeder to ${sub.name}: ${fmtA(s.required)} A worst-case phase`
+            ? `Feeder to ${sub.name}: ${fmtA(maxPhase(derived.totals.get(sub.id)!.max, mode))} A max phase, ${fmtA(s.required)} A sizing`
             : `${name} — ${fmtA(circuitAmps(l).max)} A${circuitAmps(l).continuous ? ' continuous' : ''}${l.devices.length ? ` · ${l.devices.length} device${l.devices.length > 1 ? 's' : ''}` : ''}`
         }
       >
@@ -99,9 +99,10 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
     }
   }
 
-  const worst = maxPhase(totals.worst, mode);
-  const pct = panel.mainA ? (worst / panel.mainA) * 100 : 0;
-  const estPct = panel.mainA ? (maxPhase(totals.est, mode) / panel.mainA) * 100 : 0;
+  const ofRating = (amps: number) => (panel.mainA ? (amps / panel.mainA) * 100 : 0);
+  const pct = ofRating(maxPhase(totals.max, mode));
+  const estPct = ofRating(maxPhase(totals.est, mode));
+  const sizingPct = ofRating(maxPhase(totals.design, mode));
   const kw = derived.kw.get(panel.id)!;
 
   return (
@@ -125,15 +126,22 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
       <div className="phase-row">
         {MODE_PHASES[mode].map((p) => (
           <span key={p} className="phase-total">
-            <PhaseChip phase={p} /> {fmtA(totals.worst[p])} A
+            <PhaseChip phase={p} /> {fmtA(totals.max[p])} A
           </span>
         ))}
         <span className="pct-group">
           <span className={`pct ${pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok'}`}>{Math.round(pct)}%</span>
-          <span className="muted">
-            {' '}
-            · est {Math.round(estPct)}% of {parent ? 'feeder' : 'main'}
-          </span>
+          <span className="muted"> · est {Math.round(estPct)}%</span>
+          {sizingPct > pct + 0.5 && (
+            <span
+              className={sizingPct > 100 ? 'pct over' : 'muted'}
+              title="Sizing load: continuous loads counted at 125%. This is what the rating must cover."
+            >
+              {' '}
+              · sizing {Math.round(sizingPct)}%
+            </span>
+          )}
+          <span className="muted"> of {parent ? 'feeder' : 'main'}</span>
         </span>
       </div>
       <div className="muted panel-kw">

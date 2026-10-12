@@ -24,7 +24,7 @@ const load = (kind: LoadKind, amps: number, extra: Partial<Load> = {}): Load => 
 function run(loads: Load[], mode: ServiceMode) {
   const res = optimizePanel(panel, loads, mode, layoutPanel(panel, loads, mode));
   const applied = loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l));
-  const after = phaseTotals(applied, layoutPanel(panel, applied, mode).placements).worst;
+  const after = phaseTotals(applied, layoutPanel(panel, applied, mode).placements).max;
   return { res, after, applied };
 }
 
@@ -59,7 +59,7 @@ describe('optimizePanel', () => {
     expect(applied[0].slot).toBe(1);
   });
 
-  it('never makes the worst phase worse', () => {
+  it('never makes the design phase worse', () => {
     const loads = [load('120-1p', 10, { slot: 1 }), load('120-1p', 10, { slot: 3 }), load('120-1p', 10, { slot: 5 })];
     const { res, after } = run(loads, 'three');
     expect(res.changed).toBe(false);
@@ -92,10 +92,11 @@ describe('optimizePanel', () => {
     expect(after.A).toBe(after.B);
   });
 
-  it('weights continuous loads at 125%', () => {
-    const loads = [load('120-1p', 16, { continuous: true }), load('120-1p', 20), load('120-1p', 20)];
+  it('balances real current, not the 125% sizing figure', () => {
+    // Real: {16, 15} | {17} → 31 A peak. Balancing the sizing figure (16 → 20)
+    // would pick {17, 15} | {16} → 32 A real peak.
+    const loads = [load('120-1p', 16, { continuous: true }), load('120-1p', 17), load('120-1p', 15)];
     const { after } = run(loads, 'split');
-    // 20 vs 20+20 or 20+20 vs 20 — the 20 A continuous load (16×1.25) sits alone.
-    expect(Math.max(after.A, after.B)).toBe(40);
+    expect(Math.max(after.A, after.B)).toBe(31);
   });
 });

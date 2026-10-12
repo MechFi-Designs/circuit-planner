@@ -18,12 +18,15 @@ export function SummaryBar({ state, derived, advice }: Props) {
   const { service, layouts } = derived;
   const { mode, serviceA } = state;
   const phases = MODE_PHASES[mode];
-  const worstPct = serviceA ? (maxPhase(service.worst, mode) / serviceA) * 100 : 0;
-  const estPct = serviceA ? (maxPhase(service.est, mode) / serviceA) * 100 : 0;
+  const ofService = (amps: number) => (serviceA ? (amps / serviceA) * 100 : 0);
+  const maxPct = ofService(maxPhase(service.max, mode));
+  const estPct = ofService(maxPhase(service.est, mode));
+  const sizingPct = ofService(maxPhase(service.design, mode));
+  const showSizing = sizingPct > maxPct + 0.5;
   const { serviceKw } = derived;
 
+  // Over-rating problems (judged on sizing load) come from the advice.
   const warnings: string[] = [...advice];
-  if (worstPct > 80 && worstPct <= 100) warnings.push(`Worst-case load is above 80% of the ${serviceA} A service.`);
   for (const p of state.panels) {
     const lay = layouts.get(p.id)!;
     const own = state.loads.filter((l) => l.panelId === p.id && !l.feeds && polesOf(l.kind) === 1);
@@ -44,16 +47,16 @@ export function SummaryBar({ state, derived, advice }: Props) {
     }
     if (lay.conflicts.length) warnings.push(`${p.name}: ${lay.conflicts.length} locked slot conflict(s).`);
   }
-  const imb = imbalance(service.worst, mode);
-  const peak = maxPhase(service.worst, mode);
+  const imb = imbalance(service.max, mode);
+  const peak = maxPhase(service.max, mode);
   if (peak > 0 && imb / peak > 0.2) warnings.push(`Phases are ${fmtA(imb)} A apart. Try ⚖ Optimize.`);
 
   return (
     <section className="summary card">
       <div className="summary-headline">
         <div className="stat">
-          <div className="muted small-caps">Worst case</div>
-          <div className={`big pct ${level(worstPct)}`}>{Math.round(worstPct)}%</div>
+          <div className="muted small-caps">Max load</div>
+          <div className={`big pct ${level(maxPct)}`}>{Math.round(maxPct)}%</div>
           <div className="muted">{fmtKw(serviceKw.max)} kW max</div>
         </div>
         <div className="stat">
@@ -61,31 +64,41 @@ export function SummaryBar({ state, derived, advice }: Props) {
           <div className="big est-pct">{Math.round(estPct)}%</div>
           <div className="muted">{fmtKw(serviceKw.est)} kW typical</div>
         </div>
+        {showSizing && (
+          <div
+            className="stat sizing"
+            title="Breakers, wire and the service must be rated for continuous loads at 125%. That's a sizing margin, not extra current."
+          >
+            <div className="muted small-caps">Sizing</div>
+            <div className={`mid pct ${sizingPct > 100 ? 'over' : 'muted'}`}>{Math.round(sizingPct)}%</div>
+            <div className="muted">continuous at 125%</div>
+          </div>
+        )}
         <div className="phase-bars">
           {phases.map((ph) => {
-            const w = service.worst[ph];
+            const m = service.max[ph];
             const e = service.est[ph];
-            const pct = serviceA ? (w / serviceA) * 100 : 0;
-            const ePct = serviceA ? (e / serviceA) * 100 : 0;
+            const d = service.design[ph];
             return (
               <div key={ph} className="phase-bar">
                 <PhaseChip phase={ph} />
                 <div
                   className="bar"
-                  title={`${fmtA(w)} A worst case · ${fmtA(service.connected[ph])} A connected · ${fmtA(e)} A estimated`}
+                  title={`${fmtA(m)} A max · ${fmtA(e)} A estimated · ${fmtA(d)} A sizing (continuous at 125%)`}
                 >
-                  <div className={`fill ${level(pct)}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                  <div className="fill est" style={{ width: `${Math.min(100, ePct)}%` }} />
+                  <div className={`fill ${level(ofService(m))}`} style={{ width: `${Math.min(100, ofService(m))}%` }} />
+                  <div className="fill est" style={{ width: `${Math.min(100, ofService(e))}%` }} />
+                  {d > m + 0.05 && <div className="sizing-tick" style={{ left: `${Math.min(100, ofService(d))}%` }} />}
                 </div>
                 <span className="num">
-                  {fmtA(w)} A <span className="muted">· est {fmtA(e)}</span>
+                  {fmtA(m)} A <span className="muted">· est {fmtA(e)}</span>
                 </span>
               </div>
             );
           })}
           <div className="muted tiny">
-            % of the {serviceA} A service, all panels combined. Worst case = max current with continuous loads at 125%;
-            the darker inner bar is the estimate.
+            % of the {serviceA} A service, all panels combined. Bars show max current; the darker inner bar is the
+            estimate{showSizing ? ', and the tick marks the sizing load (continuous loads at 125%)' : ''}.
           </div>
         </div>
       </div>

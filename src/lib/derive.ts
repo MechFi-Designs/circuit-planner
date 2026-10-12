@@ -114,7 +114,7 @@ function sizeFeeder(load: Load, sub: Panel, subTotals: PhaseTotals, subKw: Kw, m
   const breaker = sub.mainA > 0 ? sub.mainA : null;
   const cu = breaker ? sizeWire(breaker, 'cu') : null;
   return {
-    required: maxPhase(subTotals.worst, mode),
+    required: maxPhase(subTotals.design, mode),
     breaker,
     poles: polesOf(load.kind),
     cu,

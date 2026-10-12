@@ -21,7 +21,7 @@ const circuit = (kind: LoadKind, devices: Partial<Device>[], extra: Partial<Load
 
 describe('devices', () => {
   it('without devices, the circuit uses its own fields', () => {
-    expect(circuitAmps(circuit('120-1p', []))).toEqual({ max: 99, worst: 123.75, est: 50, continuous: true });
+    expect(circuitAmps(circuit('120-1p', []))).toEqual({ max: 99, design: 123.75, est: 50, continuous: true });
   });
 
   it('sums devices, converting watts at the circuit voltage, and ignores the circuit fields', () => {
@@ -34,7 +34,7 @@ describe('devices', () => {
     expect(a.max).toBeCloseTo(10 + 1100 / 120 + 1);
     expect(a.est).toBeCloseTo(1 + 1100 / 120 + 1);
     expect(a.continuous).toBe(false);
-    expect(a.worst).toBeCloseTo(a.max);
+    expect(a.design).toBeCloseTo(a.max);
   });
 
   it('sizes the breaker at 125% of continuous devices plus 100% of the rest', () => {
@@ -43,7 +43,7 @@ describe('devices', () => {
       { unit: 'A', max: 12, continuous: true },
       { unit: 'A', max: 5 },
     ]);
-    expect(circuitAmps(c).worst).toBeCloseTo(20);
+    expect(circuitAmps(c).design).toBeCloseTo(20);
     expect(sizeLoad(c).breaker).toBe(20);
     // Flagging the whole 17 A circuit continuous would have needed 25 A.
     expect(sizeLoad({ ...c, devices: [], amps: 17, continuous: true }).breaker).toBe(25);

@@ -39,7 +39,7 @@ export function DevicesView({ state, dispatch, derived, selectedId, onSelect }: 
                 {list.map((l) => {
                   const s = derived.sizing.get(l.id)!;
                   const p = derived.layouts.get(panel.id)!.placements.get(l.id);
-                  const pct = s.breaker ? (s.required / s.breaker) * 100 : 0;
+                  const pct = s.breaker ? (circuitAmps(l).max / s.breaker) * 100 : 0;
                   return (
                     <li key={l.id}>
                       <button
@@ -91,7 +91,8 @@ function CircuitDevices({ load, state, dispatch, derived }: CircuitProps) {
   const setDevices = (devices: Device[]) => dispatch({ type: 'updateLoad', id: load.id, patch: { devices } });
   const updateDevice = (id: string, patch: Partial<Device>) =>
     setDevices(load.devices.map((d) => (d.id === id ? { ...d, ...patch } : d)));
-  const pct = s.breaker ? (s.required / s.breaker) * 100 : 0;
+  const pct = s.breaker ? (amps.max / s.breaker) * 100 : 0;
+  const sizingPct = s.breaker ? (s.required / s.breaker) * 100 : 0;
   const estPct = s.breaker ? (amps.est / s.breaker) * 100 : 0;
 
   const addPreset = (name: string) => {
@@ -138,21 +139,30 @@ function CircuitDevices({ load, state, dispatch, derived }: CircuitProps) {
       </div>
 
       <div className="circuit-meter">
-        <div className="bar" title={`Design ${fmtA(s.required)} A · estimated ${fmtA(amps.est)} A`}>
+        <div
+          className="bar"
+          title={`${fmtA(amps.max)} A max · ${fmtA(amps.est)} A estimated · ${fmtA(s.required)} A sizing`}
+        >
           <div className={`fill ${level(pct)}`} style={{ width: `${Math.min(100, pct)}%` }} />
           <div className="fill est" style={{ width: `${Math.min(100, estPct)}%` }} />
+          {sizingPct > pct + 0.5 && <div className="sizing-tick" style={{ left: `${Math.min(100, sizingPct)}%` }} />}
         </div>
         <div className="meter-text">
           <span>
-            Design <strong>{fmtA(s.required)} A</strong>
-            {s.breaker ? ` (${Math.round(pct)}% of breaker)` : ''}
-          </span>
-          <span className="muted">
-            Max {fmtA(amps.max)} A · {fmtKw(s.kw)} kW
+            Max <strong>{fmtA(amps.max)} A</strong>
+            {s.breaker ? ` (${Math.round(pct)}% of breaker)` : ''} · {fmtKw(s.kw)} kW
           </span>
           <span className="muted">
             Est. {fmtA(amps.est)} A · {fmtKw(s.estKw)} kW
           </span>
+          {s.required > amps.max + 0.05 && (
+            <span
+              className="muted"
+              title="Continuous devices count at 125% when sizing the breaker and wire. They don't draw more current."
+            >
+              Sizing {fmtA(s.required)} A (continuous at 125%)
+            </span>
+          )}
         </div>
       </div>
 
@@ -311,8 +321,8 @@ function CircuitDevices({ load, state, dispatch, derived }: CircuitProps) {
       </datalist>
       <p className="legend muted">
         Watts convert to amps at {kind.volts} V{kind.poles === 3 ? ' 3-phase (÷ √3·V)' : ''}. The breaker is sized for
-        125% of continuous devices plus 100% of the rest. Common-device values are typical figures; use the nameplate
-        when you have it.
+        125% of continuous devices plus 100% of the rest; that's a sizing margin, not extra current. Common-device
+        values are typical figures; use the nameplate when you have it.
       </p>
     </section>
   );

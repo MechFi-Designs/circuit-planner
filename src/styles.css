@@ -988,3 +988,23 @@ td.center {
 .empty-note {
   margin: 4px 0 8px;
 }
+
+.mid {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.stat.sizing {
+  min-width: 90px;
+}
+
+.sizing-tick {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+  opacity: 0.55;
+}

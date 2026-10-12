@@ -5,23 +5,26 @@ import type { Placement } from './placement';
 export type PhaseAmps = Record<Phase, number>;
 
 export interface PhaseTotals {
-  /** Sum of entered max currents per phase. */
-  connected: PhaseAmps;
-  /** Same, with continuous loads at 125%. */
-  worst: PhaseAmps;
+  /** Real max current per phase. */
+  max: PhaseAmps;
+  /** Sizing current per phase (continuous loads at 125%); for rating checks only. */
+  design: PhaseAmps;
   /** Estimated typical running current. */
   est: PhaseAmps;
 }
 
 export const zeroPhases = (): PhaseAmps => ({ A: 0, B: 0, C: 0 });
 
-export const zeroTotals = (): PhaseTotals => ({ connected: zeroPhases(), worst: zeroPhases(), est: zeroPhases() });
+export const zeroTotals = (): PhaseTotals => ({ max: zeroPhases(), design: zeroPhases(), est: zeroPhases() });
 
 export interface CircuitAmps {
   /** Max current (sum of device max when the circuit has devices). */
   max: number;
-  /** Design current: 125% of continuous + 100% of non-continuous load. */
-  worst: number;
+  /**
+   * Sizing current: 125% of continuous + 100% of non-continuous load. Not a
+   * real current; it's what breakers, wire, mains and feeders must be rated for.
+   */
+  design: number;
   /** Estimated typical running current. */
   est: number;
   /** Any of the load is continuous. */
@@ -42,23 +45,23 @@ export function circuitAmps(load: Load): CircuitAmps {
   if (!load.devices?.length) {
     return {
       max: load.amps,
-      worst: load.amps * (load.continuous ? CONTINUOUS_FACTOR : 1),
+      design: load.amps * (load.continuous ? CONTINUOUS_FACTOR : 1),
       est: load.estAmps ?? load.amps,
       continuous: load.continuous,
     };
   }
-  const out: CircuitAmps = { max: 0, worst: 0, est: 0, continuous: false };
+  const out: CircuitAmps = { max: 0, design: 0, est: 0, continuous: false };
   for (const dv of load.devices) {
     const max = deviceAmps(load.kind, dv.max, dv.unit, dv.qty);
     out.max += max;
-    out.worst += max * (dv.continuous ? CONTINUOUS_FACTOR : 1);
+    out.design += max * (dv.continuous ? CONTINUOUS_FACTOR : 1);
     out.est += deviceAmps(load.kind, dv.est ?? dv.max, dv.unit, dv.qty);
     out.continuous ||= dv.continuous;
   }
   return out;
 }
 
-export const worstAmps = (load: Load) => circuitAmps(load).worst;
+export const designAmps = (load: Load) => circuitAmps(load).design;
 
 /** Estimated running current, defaulting to the max. */
 export const estOf = (load: Load) => circuitAmps(load).est;
@@ -74,13 +77,13 @@ export function phaseTotals(
   placements: Map<string, Placement>,
   feeders: Map<string, PhaseTotals> = new Map(),
 ): PhaseTotals {
-  const { connected, worst, est } = zeroTotals();
+  const { max, design, est } = zeroTotals();
   for (const l of loads) {
     const fed = feeders.get(l.id);
     if (fed) {
       for (const ph of ['A', 'B', 'C'] as const) {
-        connected[ph] += fed.connected[ph];
-        worst[ph] += fed.worst[ph];
+        max[ph] += fed.max[ph];
+        design[ph] += fed.design[ph];
         est[ph] += fed.est[ph];
       }
       continue;
@@ -89,17 +92,17 @@ export function phaseTotals(
     if (!p) continue;
     for (const ph of p.phases) {
       const c = circuitAmps(l);
-      connected[ph] += c.max;
-      worst[ph] += c.worst;
+      max[ph] += c.max;
+      design[ph] += c.design;
       est[ph] += c.est;
     }
   }
-  return { connected, worst, est };
+  return { max, design, est };
 }
 
 export function addTotals(a: PhaseTotals, b: PhaseTotals): PhaseTotals {
   const sum = (x: PhaseAmps, y: PhaseAmps): PhaseAmps => ({ A: x.A + y.A, B: x.B + y.B, C: x.C + y.C });
-  return { connected: sum(a.connected, b.connected), worst: sum(a.worst, b.worst), est: sum(a.est, b.est) };
+  return { max: sum(a.max, b.max), design: sum(a.design, b.design), est: sum(a.est, b.est) };
 }
 
 export function maxPhase(amps: PhaseAmps, mode: ServiceMode): number {

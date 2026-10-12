@@ -30,14 +30,16 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 - **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows.
 - **⚖ Optimize:** moves unlocked circuits between slots to even out the worst-case current on each phase. Locked circuits (🔒) stay where they are.
   - With **Move circuits between panels** turned on, it can also move circuits to another panel, but only when that takes load off something. Its priorities, in order:
-    1. Get every panel under its rating (main or feeder breaker) and the service under its rating.
+    1. Get every panel's sizing load under its rating (main or feeder breaker), and the service's under its rating.
     2. Bring any panel over 80% down.
     3. Even out panels that are fed directly from the service.
   - If a panel is still over its rating, the warnings say why and what would fix it: what Optimize would get it to, feeding a subpanel from the service, unlocking circuits, or a bigger rating.
   - A subpanel's load still flows through its parent, so it won't shuffle circuits into a subpanel for no benefit.
 - **Utilization:** amps and kW on each phase, shown as a percentage of the service rating and of each panel's main or feeder breaker.
-  - **Worst case** uses max current with continuous loads at 125%; this is what sizing is based on.
+  - **Max load** is the real max current: every circuit at its max.
   - **Estimated** uses your Est. A figures, or max current where you left Est. A blank, to show realistic loading.
+  - **Sizing** counts continuous loads at 125%. It isn't extra current; it's what breakers, wire, mains, feeders and the service must be rated for. It's shown separately and only when it differs from max load.
+  - Phase balancing uses real current. Rating checks use the sizing load.
 - **Printable circuit map:** **Export PDF** downloads a letter-size circuit directory with one page per panel, ready to print and tape inside the panel door. Each panel card also has a **PDF** button for just that panel.
   - The page mirrors the panel: odd circuits on the left, even on the right, numbers next to the phase column, multi-pole breakers merged with a tie bar, and tandems split into A/B.
   - Each circuit shows its description, breaker and copper wire size.

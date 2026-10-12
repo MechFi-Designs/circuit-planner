@@ -42,7 +42,7 @@ const design = (panels: Panel[], loads: Load[]): AppState =>
 
 const util = (s: AppState, id: string) => {
   const d = derive(s);
-  return maxPhase(d.totals.get(id)!.worst, s.mode) / s.panels.find((p) => p.id === id)!.mainA;
+  return maxPhase(d.totals.get(id)!.design, s.mode) / s.panels.find((p) => p.id === id)!.mainA;
 };
 
 function adviceFor(s: AppState) {
@@ -59,7 +59,7 @@ describe('keeping panels under their rating', () => {
     expect(util(after, 'b')).toBeLessThanOrEqual(1);
   });
 
-  it('relieves every overloaded panel, not just the worst one', () => {
+  it('relieves every overloaded panel, not just the design one', () => {
     const loads = [...heavy(), ...[60, 60, 50].map((a) => load('b', '240-2p', a))];
     const s = design([panel('a', 'A'), panel('b', 'B'), panel('c', 'C', { mainA: 400 })], loads);
     const after = { ...s, serviceA: 800, loads: optimizeAll({ ...s, serviceA: 800 }).loads! };
@@ -68,7 +68,9 @@ describe('keeping panels under their rating', () => {
 
   it('advice previews what Optimize can do', () => {
     const s = design([panel('a', 'A'), panel('b', 'B')], heavy());
-    expect(adviceFor(s)).toMatch(/A is [\d.]+ A over its 200 A main.*⚖ Optimize can bring it to \d+%/);
+    expect(adviceFor(s)).toMatch(
+      /A has a [\d.]+ A max load, [\d.]+ A more than its 200 A main.*⚖ Optimize can bring it to \d+% of its rating/,
+    );
   });
 
   it('advice points at subpanels fed through an overloaded panel', () => {
@@ -97,7 +99,17 @@ describe('keeping panels under their rating', () => {
 
   it('service overload says rearranging cannot help', () => {
     const s = { ...design([panel('a', 'A')], heavy()), serviceA: 200 };
-    expect(adviceFor(s)).toMatch(/over the 200 A service. Moving circuits around can't fix that/);
+    expect(adviceFor(s)).toMatch(
+      /The service has a [\d.]+ A max load, [\d.]+ A more than its 200 A rating. Moving circuits around can't fix that/,
+    );
+  });
+
+  it('explains when only the 125% sizing margin puts a panel over', () => {
+    // 180 A of real load, all continuous: 225 A for sizing on a 200 A main.
+    const loads = [load('a', '240-2p', 100, { continuous: true }), load('a', '240-2p', 80, { continuous: true })];
+    expect(adviceFor(design([panel('a', 'A')], loads))).toMatch(
+      /A has a 180 A max load, but sizing counts continuous loads at 125% \(225 A\), 25 A more than its 200 A main/,
+    );
   });
 
   it('no advice when nothing is overloaded', () => {

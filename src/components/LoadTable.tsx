@@ -52,7 +52,7 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
           <button
             className="btn primary"
             onClick={onOptimize}
-            title="Re-slot unlocked circuits so worst-case current is spread evenly across phases"
+            title="Re-slot unlocked circuits so max current is spread evenly across phases"
           >
             ⚖ Optimize
           </button>
@@ -124,7 +124,9 @@ function PanelLoads({
               <th title="Continuous load (3 h or more): sized at 125%">Cont.</th>
               <th title="Tandem (twin) breaker: two 1-pole circuits share one space">Tandem</th>
               <th title="Estimated typical running current. Blank = same as max.">Est. A</th>
-              <th title="Required ampacity">Req’d</th>
+              <th title="Sizing current: 125% of continuous + 100% of other load. It isn't extra current; the breaker and wire must be rated for at least this.">
+                Sizing
+              </th>
               <th>Breaker</th>
               <th>Cu THHN</th>
               <th title="Copper equipment grounding conductor (Table 250.122)">EGC</th>
@@ -207,8 +209,8 @@ function PanelLoads({
                   </td>
                   <td>
                     {sub ? (
-                      <span className="num pad" title={`${sub.name} worst-case phase load`}>
-                        {fmtA(s.required)}
+                      <span className="num pad" title={`${sub.name} max phase load`}>
+                        {fmtA(maxPhase(derived.totals.get(sub.id)!.max, state.mode))}
                       </span>
                     ) : nDev ? (
                       <span className="num pad derived" title={devTitle}>

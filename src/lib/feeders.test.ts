@@ -49,10 +49,10 @@ describe('subpanel feeders', () => {
   it('subpanel load rolls up into the parent and is counted once at the service', () => {
     const s = twoPanels();
     const d = derive(s);
-    expect(d.totals.get(s.panels[1].id)!.worst).toMatchObject({ A: 30, B: 30 });
+    expect(d.totals.get(s.panels[1].id)!.design).toMatchObject({ A: 30, B: 30 });
     // Parent: its own 20 A on A + the subpanel's 30/30 through the feeder.
-    expect(d.totals.get('main')!.worst).toMatchObject({ A: 50, B: 30 });
-    expect(d.service.worst).toMatchObject({ A: 50, B: 30 });
+    expect(d.totals.get('main')!.design).toMatchObject({ A: 50, B: 30 });
+    expect(d.service.design).toMatchObject({ A: 50, B: 30 });
   });
 
   it('the feeder breaker takes 2 spaces in the parent and is sized at the feeder rating', () => {
@@ -68,8 +68,8 @@ describe('subpanel feeders', () => {
     s = reducer(s, { type: 'setFedFrom', id: s.panels[1].id, fedFrom: null });
     expect(s.loads.some((l) => l.feeds)).toBe(false);
     const d = derive(s);
-    expect(d.totals.get('main')!.worst).toMatchObject({ A: 20, B: 0 });
-    expect(d.service.worst).toMatchObject({ A: 50, B: 30 });
+    expect(d.totals.get('main')!.design).toMatchObject({ A: 20, B: 0 });
+    expect(d.service.design).toMatchObject({ A: 50, B: 30 });
   });
 
   it('switching to 3-phase makes the feeder 3-pole', () => {
@@ -155,9 +155,11 @@ describe('optimizing across panels', () => {
     expect(res.moved.length).toBeGreaterThan(0);
     const after = { ...s, loads: res.loads! };
     const d = derive(after);
-    const util = (id: string) => Math.max(d.totals.get(id)!.worst.A, d.totals.get(id)!.worst.B);
+    const util = (id: string) => Math.max(d.totals.get(id)!.design.A, d.totals.get(id)!.design.B);
     const before = derive(s);
-    expect(util('main')).toBeLessThan(Math.max(before.totals.get('main')!.worst.A, before.totals.get('main')!.worst.B));
+    expect(util('main')).toBeLessThan(
+      Math.max(before.totals.get('main')!.design.A, before.totals.get('main')!.design.B),
+    );
   });
 
   it('does not move circuits when turned off', () => {
