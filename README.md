@@ -27,6 +27,10 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 - **Utilization:** amps and kW on each phase, shown as a percentage of the service rating and of each panel's main or feeder breaker.
   - **Worst case** uses max current with continuous loads at 125%; this is what sizing is based on.
   - **Estimated** uses your Est. A figures, or max current where you left Est. A blank, to show realistic loading.
+- **Printable circuit map:** **Export PDF** downloads a letter-size circuit directory with one page per panel, ready to print and tape inside the panel door. Each panel card also has a **PDF** button for just that panel.
+  - The page mirrors the panel: odd circuits on the left, even on the right, numbers next to the phase column, multi-pole breakers merged with a tie bar, and tandems split into A/B.
+  - Each circuit shows its description, breaker and copper wire size.
+  - The header shows the rating, service type and what the panel is fed from (including the parent breaker's spaces). The footer has per-phase load and kW.
 - **Saving and sharing:** your design autosaves in the browser.
   - **Save file** downloads it as `.json` and **Open file** loads it back, so it survives clearing browser data.
   - **Share link** copies a URL containing the whole design.

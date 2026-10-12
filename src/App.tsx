@@ -4,6 +4,7 @@ import { defaultState, exportFile, initialState, parseFile, persist, reducer, sh
 import { derive } from './lib/derive';
 import { isOverloaded, optimizePreview, overloadAdvice } from './lib/advice';
 import { optimizeAll } from './lib/optimize';
+import { exportPdf } from './lib/pdf';
 import { MODE_LABEL, MODE_PHASES } from './lib/nec';
 import { fmtA } from './lib/sizing';
 import { ServiceConfig } from './components/ServiceConfig';
@@ -110,6 +111,13 @@ export default function App() {
         <div className="actions">
           <button className="btn" onClick={share} title="Copy a link containing this whole design">
             Share link
+          </button>
+          <button
+            className="btn"
+            onClick={() => exportPdf(state, derived)}
+            title="Download a printable circuit directory (one letter page per panel)"
+          >
+            Export PDF
           </button>
           <button className="btn" onClick={() => exportFile(state)} title="Download this design as a .json file">
             Save file

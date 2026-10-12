@@ -4,6 +4,7 @@ import type { Derived } from '../lib/derive';
 import { maxPhase } from '../lib/loadCalc';
 import { MODE_PHASES, phaseOfSlot } from '../lib/nec';
 import { fmtA, fmtKw } from '../lib/sizing';
+import { exportPdf } from '../lib/pdf';
 import { PhaseChip } from './PhaseChip';
 
 interface Props {
@@ -108,7 +109,16 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
   return (
     <section className="card panel-card">
       <div className="card-head">
-        <h2>{panel.name}</h2>
+        <h2>
+          {panel.name}
+          <button
+            className="btn ghost tiny-btn"
+            onClick={() => exportPdf(state, derived, [panel.id])}
+            title={`Download a printable circuit directory for ${panel.name}`}
+          >
+            PDF
+          </button>
+        </h2>
         <span className="muted">
           {parent ? `${panel.mainA} A feeder from ${parent.name}` : `${panel.mainA} A main`} · {layout.spacesUsed}/
           {panel.spaces} spaces · {layout.circuitsUsed}/{panel.maxCircuits} circuits
