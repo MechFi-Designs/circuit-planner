@@ -5,11 +5,11 @@ import { Board, layoutPanel, spanOf, type PanelLayout } from './placement';
 import { imbalance, maxPhase, phaseTotals, worstAmps, zeroPhases, type PhaseAmps, type PhaseTotals } from './loadCalc';
 
 export interface OptimizeResult {
-  /** New starting slot for each movable load. Empty when nothing changed. */
+  /** New starting slot for each movable load. Empty when nothing moved. */
   slots: Map<string, number>;
   before: PhaseAmps;
   after: PhaseAmps;
-  improved: boolean;
+  changed: boolean;
   /** True when the movable loads could not all be fit around the locked ones. */
   failed: boolean;
 }
@@ -50,7 +50,7 @@ export function optimizePanel(
     slots: new Map(),
     before,
     after: before,
-    improved: false,
+    changed: false,
     failed,
   });
 
@@ -193,12 +193,16 @@ export function optimizePanel(
     }
   }
 
+  // Apply the optimized layout unless it's worse: an equally balanced result
+  // still tidies unlocked circuits into compact, predictable slots.
   const placedMore = current.unplaced.length > current.conflicts.length;
-  if (!placedMore && !better(score(amps, mode), score(before, mode))) return noChange(false);
+  if (!placedMore && better(score(before, mode), score(amps, mode))) return noChange(false);
+  const moved = movable.some((l) => current.placements.get(l.id)?.slot !== starts.get(l.id));
+  if (!moved) return noChange(false);
 
   const slots = new Map<string, number>();
   for (const l of movable) slots.set(l.id, starts.get(l.id)!);
-  return { slots, before, after: { ...amps }, improved: true, failed: false };
+  return { slots, before, after: { ...amps }, changed: true, failed: false };
 }
 
 export interface OptimizeAllResult {
@@ -226,7 +230,7 @@ function optimizeSlots(state: AppState): { state: AppState; failed: string[] } {
     const loads = working.loads.filter((l) => l.panelId === p.id);
     const res = optimizePanel(p, loads, state.mode, d.layouts.get(p.id)!, feederTotals(d, loads));
     if (res.failed) failed.push(p.name);
-    if (!res.improved) continue;
+    if (!res.changed) continue;
     working = {
       ...working,
       loads: working.loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l)),

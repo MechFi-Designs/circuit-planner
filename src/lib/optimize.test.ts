@@ -31,7 +31,7 @@ describe('optimizePanel', () => {
     const loads = [20, 20, 15, 15, 10, 10].map((a) => load('120-1p', a));
     // Auto layout puts them A,A,B,B,C,C → 40/30/20.
     const { res, after, applied } = run(loads, 'three');
-    expect(res.improved).toBe(true);
+    expect(res.changed).toBe(true);
     expect(after).toEqual({ A: 30, B: 30, C: 30 });
     // Compaction keeps them in the first three rows.
     expect(Math.max(...applied.map((l) => l.slot!))).toBeLessThanOrEqual(6);
@@ -60,8 +60,22 @@ describe('optimizePanel', () => {
   it('never makes the worst phase worse', () => {
     const loads = [load('120-1p', 10, { slot: 1 }), load('120-1p', 10, { slot: 3 }), load('120-1p', 10, { slot: 5 })];
     const { res, after } = run(loads, 'three');
-    expect(res.improved).toBe(false);
+    expect(res.changed).toBe(false);
     expect(after).toEqual({ A: 10, B: 10, C: 10 });
+  });
+
+  it('moves a circuit that was pinned and then unlocked, even when phases are already balanced', () => {
+    // Pinned out at slot 19 (phase A), then unlocked. Balance is equal either way.
+    const loads = [load('120-1p', 10, { slot: 19, locked: false }), load('120-1p', 10), load('120-1p', 10)];
+    const { res, applied } = run(loads, 'three');
+    expect(res.changed).toBe(true);
+    expect(Math.max(...applied.map((l) => l.slot!))).toBeLessThanOrEqual(6);
+  });
+
+  it('is stable: a second Optimize changes nothing', () => {
+    const loads = [20, 20, 15, 15, 10, 10].map((a) => load('120-1p', a));
+    const { applied } = run(loads, 'three');
+    expect(run(applied, 'three').res.changed).toBe(false);
   });
 
   it('weights continuous loads at 125%', () => {

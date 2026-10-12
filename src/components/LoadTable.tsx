@@ -140,8 +140,9 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                   <td>
                     <select
                       className="slot-select"
-                      value={l.slot ?? ''}
+                      value={l.locked && l.slot != null ? l.slot : ''}
                       aria-label="Slot"
+                      title={l.locked ? 'Pinned to this slot' : 'Placed automatically; Optimize may move it'}
                       onChange={(e) =>
                         update(
                           l.id,
@@ -151,7 +152,7 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                         )
                       }
                     >
-                      <option value="">{p && l.slot == null ? `Auto · ${p.slot}` : 'Auto'}</option>
+                      <option value="">{p && !(l.locked && l.slot != null) ? `Auto · ${p.slot}` : 'Auto'}</option>
                       {Array.from({ length: Math.max(0, lastStart) }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>
                           {n}

@@ -47,6 +47,9 @@ export default function App() {
     }
     const phasesChanged = MODE_PHASES[state.mode].some((ph) => Math.abs(res.before[ph] - res.after[ph]) > 0.05);
     if (res.loads && phasesChanged) lines.push(`Service phases (worst-case A): ${parts.join(' · ')}.`);
+    else if (res.loads && !res.moved.length) {
+      lines.push('Re-slotted unlocked circuits into a tidier layout; phase balance was already as good as it gets.');
+    }
     if (res.crossPanelNoGain) {
       lines.push(
         'No circuits needed to move between panels. A subpanel’s load still flows through the panel feeding it, so moving circuits there doesn’t lower that panel’s or the service’s load.',
