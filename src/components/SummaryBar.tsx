@@ -8,27 +8,24 @@ import { PhaseChip } from './PhaseChip';
 interface Props {
   state: AppState;
   derived: Derived;
+  /** Overload explanations (see lib/advice). */
+  advice: string[];
 }
 
 const level = (pct: number) => (pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok');
 
-export function SummaryBar({ state, derived }: Props) {
-  const { service, totals, layouts } = derived;
+export function SummaryBar({ state, derived, advice }: Props) {
+  const { service, layouts } = derived;
   const { mode, serviceA } = state;
   const phases = MODE_PHASES[mode];
   const worstPct = serviceA ? (maxPhase(service.worst, mode) / serviceA) * 100 : 0;
   const estPct = serviceA ? (maxPhase(service.est, mode) / serviceA) * 100 : 0;
   const { serviceKw } = derived;
 
-  const warnings: string[] = [];
-  if (worstPct > 100) warnings.push(`Worst-case load exceeds the ${serviceA} A service.`);
-  else if (worstPct > 80) warnings.push(`Worst-case load is above 80% of the ${serviceA} A service.`);
+  const warnings: string[] = [...advice];
+  if (worstPct > 80 && worstPct <= 100) warnings.push(`Worst-case load is above 80% of the ${serviceA} A service.`);
   for (const p of state.panels) {
-    const t = totals.get(p.id)!;
     const lay = layouts.get(p.id)!;
-    const pct = p.mainA ? (maxPhase(t.worst, mode) / p.mainA) * 100 : 0;
-    const what = p.fedFrom ? 'feeder' : 'main';
-    if (pct > 100) warnings.push(`${p.name}: worst-case load exceeds its ${p.mainA} A ${what}.`);
     if (lay.unplaced.length) warnings.push(`${p.name}: ${lay.unplaced.length} circuit(s) don't fit.`);
     if (lay.conflicts.length) warnings.push(`${p.name}: ${lay.conflicts.length} locked slot conflict(s).`);
   }

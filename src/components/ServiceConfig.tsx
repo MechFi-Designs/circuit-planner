@@ -36,7 +36,9 @@ export function ServiceConfig({ state, dispatch }: Props) {
             <tr>
               <th>Panel</th>
               <th title="Service, or the panel whose feeder breaker supplies this one">Fed from</th>
-              <th title="Main breaker, or the feeder breaker rating for a subpanel">Main / feeder A</th>
+              <th title="The panel's max load: its main breaker, or the feeder breaker for a subpanel. Optimize tries to keep every panel's worst-case load under this.">
+                Rating A
+              </th>
               <th>Spaces</th>
               <th title="More circuits than spaces allows tandem breakers">Circuits</th>
               <th aria-label="Remove" />

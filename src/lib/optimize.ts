@@ -239,10 +239,13 @@ function optimizeSlots(state: AppState): { state: AppState; failed: string[] } {
 const COMFORTABLE_UTIL = 0.8;
 
 /**
- * Peak utilization across the service and every panel's main/feeder (clipped at
- * 80%), plus the spread among panels fed straight from the service. Subpanels
- * are left out of the spread term: emptying or filling one never relieves its
- * parent, so circuits only move in or out of a subpanel to get it under 80%.
+ * Utilization score, in priority order:
+ * 1. Total overload: how far each panel (vs its main/feeder) and the service
+ *    are over 100%, summed, so every overloaded panel gets relief.
+ * 2. Peak utilization, clipped at 80% (lower than that is fine).
+ * 3. Spread among panels fed straight from the service. Subpanels are left
+ *    out: emptying or filling one never relieves its parent, so circuits only
+ *    move in or out of a subpanel to get something under its limit.
  */
 function utilScore(state: AppState, panelAmps: (p: Panel) => number, serviceAmps: number): number[] {
   const all: number[] = [];
@@ -254,7 +257,11 @@ function utilScore(state: AppState, panelAmps: (p: Panel) => number, serviceAmps
     if (!p.fedFrom) roots.push(u);
   }
   if (state.serviceA > 0) all.push(serviceAmps / state.serviceA);
-  return [Math.max(COMFORTABLE_UTIL, ...all), roots.reduce((s, u) => s + u * u, 0)];
+  return [
+    all.reduce((s, u) => s + Math.max(0, u - 1), 0),
+    Math.max(COMFORTABLE_UTIL, ...all),
+    roots.reduce((s, u) => s + u * u, 0),
+  ];
 }
 
 /** Whole-design score: fewest circuits that don't fit, then utilization, then the most even service phases. */

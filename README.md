@@ -18,7 +18,11 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 - **Automatic sizing:** for each circuit, the breaker, the copper THHN wire, the copper equipment ground (EGC), and its kW.
 - **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows.
 - **⚖ Optimize:** moves unlocked circuits between slots to even out the worst-case current on each phase. Locked circuits (🔒) stay where they are.
-  - With **Move circuits between panels** turned on, it can also move circuits to another panel, but only when that takes load off something: a panel over 80% of its main or feeder, or uneven panels that are both fed from the service.
+  - With **Move circuits between panels** turned on, it can also move circuits to another panel, but only when that takes load off something. Its priorities, in order:
+    1. Get every panel under its rating (main or feeder breaker) and the service under its rating.
+    2. Bring any panel over 80% down.
+    3. Even out panels that are fed directly from the service.
+  - If a panel is still over its rating, the warnings say why and what would fix it: what Optimize would get it to, feeding a subpanel from the service, unlocking circuits, or a bigger rating.
   - A subpanel's load still flows through its parent, so it won't shuffle circuits into a subpanel for no benefit.
 - **Utilization:** amps and kW on each phase, shown as a percentage of the service rating and of each panel's main or feeder breaker.
   - **Worst case** uses max current with continuous loads at 125%; this is what sizing is based on.

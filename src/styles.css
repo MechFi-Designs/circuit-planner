@@ -363,11 +363,17 @@ td.center {
 
 .panel-config input:not([type='number']) {
   width: 100%;
-  min-width: 80px;
+  min-width: 72px;
 }
 
 .panel-config input[type='number'] {
-  width: 58px;
+  width: 52px;
+}
+
+.panel-config td,
+.panel-config th {
+  padding-left: 3px;
+  padding-right: 3px;
 }
 
 .panel-config select {

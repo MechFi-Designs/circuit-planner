@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ServiceMode } from './types';
 import { defaultState, exportFile, initialState, parseFile, persist, reducer, shareUrl } from './state';
 import { derive } from './lib/derive';
+import { isOverloaded, optimizePreview, overloadAdvice } from './lib/advice';
 import { optimizeAll } from './lib/optimize';
 import { MODE_LABEL, MODE_PHASES } from './lib/nec';
 import { fmtA } from './lib/sizing';
@@ -26,6 +27,7 @@ export default function App() {
   useEffect(() => persist(state), [state]);
 
   const derived = useMemo(() => derive(state), [state]);
+  const advice = useMemo(() => overloadAdvice(state, derived, optimizePreview(state, derived)), [state, derived]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const setMode = (mode: ServiceMode) => {
@@ -51,6 +53,10 @@ export default function App() {
       );
     }
     if (res.failed.length) lines.push(`Couldn't fit all circuits around locked ones in ${res.failed.join(', ')}.`);
+    const result = res.loads ? { ...state, loads: res.loads } : state;
+    if (isOverloaded(result, derive(result))) {
+      lines.push('Some panels are still over their rating; the warnings above say what would fix it.');
+    }
     if (res.loads) dispatch({ type: 'setLoads', loads: res.loads });
     else if (!res.failed.length) lines.unshift('Already as balanced as it gets with the current locks.');
     setNotice({ kind: res.failed.length ? 'bad' : res.loads ? 'ok' : 'info', text: lines.join(' ') });
@@ -149,7 +155,7 @@ export default function App() {
         </div>
       )}
 
-      <SummaryBar state={state} derived={derived} />
+      <SummaryBar state={state} derived={derived} advice={advice} />
 
       <main className="layout">
         <div className="col-left">
