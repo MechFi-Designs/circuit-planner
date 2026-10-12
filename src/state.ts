@@ -1,16 +1,18 @@
 import type { AppState, Load, LoadKind, Panel, ServiceMode } from './types';
-import { KINDS, KINDS_BY_MODE, remapKind } from './lib/nec';
+import { feederKind, KINDS, KINDS_BY_MODE, remapKind } from './lib/nec';
+import { isWithin } from './lib/derive';
 
 const STORAGE_KEY = 'circuit-planner:v1';
 const SHARE_PARAM = 's';
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
-export function newPanel(index: number): Panel {
+export function newPanel(index: number, fedFrom: string | null = null): Panel {
   return {
     id: uid(),
     name: `Panel ${String.fromCharCode(65 + (index % 26))}`,
-    mainA: 200,
+    mainA: fedFrom ? 100 : 200,
+    fedFrom,
     spaces: 20,
     maxCircuits: 40,
   };
@@ -56,7 +58,8 @@ export type Action =
   | { type: 'setMode'; mode: ServiceMode }
   | { type: 'setServiceA'; amps: number }
   | { type: 'addPanel' }
-  | { type: 'updatePanel'; id: string; patch: Partial<Panel> }
+  | { type: 'updatePanel'; id: string; patch: Partial<Omit<Panel, 'fedFrom'>> }
+  | { type: 'setFedFrom'; id: string; fedFrom: string | null }
   | { type: 'removePanel'; id: string }
   | { type: 'addLoad'; panelId: string }
   | { type: 'updateLoad'; id: string; patch: Partial<Load> }
@@ -66,6 +69,43 @@ export type Action =
   | { type: 'replace'; state: AppState };
 
 export function reducer(state: AppState, action: Action): AppState {
+  return syncFeeders(apply(state, action));
+}
+
+/**
+ * Keep feeder breakers consistent with the feed tree: exactly one feeder load
+ * in each subpanel's parent (keeping its slot/lock when it already exists),
+ * none for panels fed from the service, and the right pole count for the mode.
+ */
+export function syncFeeders(state: AppState): AppState {
+  const panelIds = new Set(state.panels.map((p) => p.id));
+  const panels = state.panels.map((p) =>
+    p.fedFrom && (!panelIds.has(p.fedFrom) || isWithin(state.panels, p.id, p.fedFrom)) ? { ...p, fedFrom: null } : p,
+  );
+  const want = new Map(panels.filter((p) => p.fedFrom).map((p) => [p.id, p.fedFrom!]));
+  const kind = feederKind(state.mode);
+  const have = new Set<string>();
+  const loads: Load[] = [];
+  for (const l of state.loads) {
+    if (!l.feeds) {
+      loads.push(l);
+      continue;
+    }
+    if (want.get(l.feeds) !== l.panelId || have.has(l.feeds)) continue;
+    have.add(l.feeds);
+    loads.push(l.kind === kind ? l : { ...l, kind });
+  }
+  for (const [sub, parent] of want) {
+    if (!have.has(sub)) loads.push(newLoad(parent, state.mode, { feeds: sub, kind }));
+  }
+  const changed =
+    loads.length !== state.loads.length ||
+    loads.some((l, i) => l !== state.loads[i]) ||
+    panels.some((p, i) => p !== state.panels[i]);
+  return changed ? { ...state, panels, loads } : state;
+}
+
+function apply(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'setMode':
       return {
@@ -76,7 +116,14 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'setServiceA':
       return { ...state, serviceA: action.amps };
     case 'addPanel':
-      return { ...state, panels: [...state.panels, newPanel(state.panels.length)] };
+      // New panels default to a subpanel of the first panel.
+      return { ...state, panels: [...state.panels, newPanel(state.panels.length, state.panels[0]?.id ?? null)] };
+    case 'setFedFrom':
+      if (action.fedFrom && isWithin(state.panels, action.id, action.fedFrom)) return state;
+      return {
+        ...state,
+        panels: state.panels.map((p) => (p.id === action.id ? { ...p, fedFrom: action.fedFrom } : p)),
+      };
     case 'updatePanel':
       return {
         ...state,
@@ -84,10 +131,14 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     case 'removePanel': {
       if (state.panels.length <= 1) return state;
+      const gone = state.panels.find((p) => p.id === action.id);
       return {
         ...state,
-        panels: state.panels.filter((p) => p.id !== action.id),
-        loads: state.loads.filter((l) => l.panelId !== action.id),
+        // Subpanels of the removed panel are re-fed from its parent.
+        panels: state.panels
+          .filter((p) => p.id !== action.id)
+          .map((p) => (p.fedFrom === action.id ? { ...p, fedFrom: gone?.fedFrom ?? null } : p)),
+        loads: state.loads.filter((l) => l.panelId !== action.id && l.feeds !== action.id),
       };
     }
     case 'addLoad':
@@ -102,12 +153,10 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'applySlots':
       return {
         ...state,
-        loads: state.loads.map((l) =>
-          action.slots.has(l.id) ? { ...l, slot: action.slots.get(l.id)! } : l,
-        ),
+        loads: state.loads.map((l) => (action.slots.has(l.id) ? { ...l, slot: action.slots.get(l.id)! } : l)),
       };
     case 'clearLoads':
-      return { ...state, loads: [] };
+      return { ...state, loads: state.loads.filter((l) => l.feeds) };
     case 'replace':
       return action.state;
   }
@@ -125,6 +174,7 @@ export function sanitize(raw: unknown): AppState | null {
     id: typeof p.id === 'string' ? p.id : uid(),
     name: typeof p.name === 'string' ? p.name : `Panel ${i + 1}`,
     mainA: num(p.mainA, 200),
+    fedFrom: typeof p.fedFrom === 'string' ? p.fedFrom : null,
     spaces: Math.max(1, Math.min(84, Math.round(num(p.spaces, 20)))),
     maxCircuits: Math.max(1, Math.min(168, Math.round(num(p.maxCircuits, 40)))),
   }));
@@ -142,9 +192,10 @@ export function sanitize(raw: unknown): AppState | null {
         continuous: l.continuous === true,
         slot: typeof l.slot === 'number' && l.slot >= 1 ? Math.round(l.slot) : null,
         locked: l.locked === true,
+        ...(typeof l.feeds === 'string' ? { feeds: l.feeds } : {}),
       };
     });
-  return { mode, serviceA: num(r.serviceA, 200), panels, loads };
+  return syncFeeders({ mode, serviceA: num(r.serviceA, 200), panels, loads });
 }
 
 function toBase64Url(text: string): string {
@@ -190,6 +241,29 @@ export function initialState(): AppState {
     /* storage unavailable or corrupt */
   }
   return defaultState();
+}
+
+const FILE_TAG = 'circuit-planner';
+
+export function exportFile(state: AppState): void {
+  const body = JSON.stringify({ app: FILE_TAG, version: 1, savedAt: new Date().toISOString(), state }, null, 2);
+  const url = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  const a = document.createElement('a');
+  const name = state.panels[0]?.name.trim().replace(/[^\w-]+/g, '-') || 'panel';
+  a.href = url;
+  a.download = `circuit-plan-${name}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Parse a saved file (or a bare state object). Returns null if it isn't one. */
+export function parseFile(text: string): AppState | null {
+  try {
+    const raw = JSON.parse(text);
+    return sanitize(raw && raw.app === FILE_TAG ? raw.state : raw);
+  } catch {
+    return null;
+  }
 }
 
 export function persist(state: AppState): void {

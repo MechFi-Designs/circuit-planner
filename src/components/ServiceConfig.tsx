@@ -1,6 +1,7 @@
 import type { Dispatch } from 'react';
 import type { AppState } from '../types';
 import type { Action } from '../state';
+import { isWithin } from '../lib/derive';
 import { NumInput } from './NumInput';
 
 interface Props {
@@ -34,7 +35,8 @@ export function ServiceConfig({ state, dispatch }: Props) {
           <thead>
             <tr>
               <th>Panel</th>
-              <th>Main (A)</th>
+              <th title="Service, or the panel whose feeder breaker supplies this one">Fed from</th>
+              <th title="Main breaker, or the feeder breaker rating for a subpanel">Main / feeder A</th>
               <th>Spaces</th>
               <th title="More circuits than spaces allows tandem breakers">Circuits</th>
               <th aria-label="Remove" />
@@ -51,9 +53,26 @@ export function ServiceConfig({ state, dispatch }: Props) {
                   />
                 </td>
                 <td>
+                  <select
+                    value={p.fedFrom ?? ''}
+                    aria-label="Fed from"
+                    onChange={(e) => dispatch({ type: 'setFedFrom', id: p.id, fedFrom: e.target.value || null })}
+                  >
+                    <option value="">Service</option>
+                    {state.panels
+                      .filter((o) => !isWithin(state.panels, p.id, o.id))
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                  </select>
+                </td>
+                <td>
                   <NumInput
                     min={0}
                     value={p.mainA}
+                    title={p.fedFrom ? 'Feeder breaker rating in the parent panel' : 'Main breaker rating'}
                     aria-label="Main breaker amps"
                     onCommit={(v) => dispatch({ type: 'updatePanel', id: p.id, patch: { mainA: Math.max(0, v) } })}
                   />

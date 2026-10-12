@@ -1,20 +1,19 @@
 import type { AppState } from '../types';
-import type { PanelLayout } from '../lib/placement';
-import { imbalance, maxPhase, type PhaseTotals } from '../lib/loadCalc';
+import type { Derived } from '../lib/derive';
+import { imbalance, maxPhase } from '../lib/loadCalc';
 import { MODE_PHASES } from '../lib/nec';
 import { fmtA } from '../lib/sizing';
 import { PhaseChip } from './PhaseChip';
 
 interface Props {
   state: AppState;
-  service: PhaseTotals;
-  panelTotals: Map<string, PhaseTotals>;
-  layouts: Map<string, PanelLayout>;
+  derived: Derived;
 }
 
 const level = (pct: number) => (pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok');
 
-export function SummaryBar({ state, service, panelTotals, layouts }: Props) {
+export function SummaryBar({ state, derived }: Props) {
+  const { service, totals, layouts } = derived;
   const { mode, serviceA } = state;
   const phases = MODE_PHASES[mode];
   const worstPct = serviceA ? (maxPhase(service.worst, mode) / serviceA) * 100 : 0;
@@ -23,12 +22,12 @@ export function SummaryBar({ state, service, panelTotals, layouts }: Props) {
   const warnings: string[] = [];
   if (worstPct > 100) warnings.push(`Worst-case load exceeds the ${serviceA} A service.`);
   else if (worstPct > 80) warnings.push(`Worst-case load is above 80% of the ${serviceA} A service.`);
-  const mainSum = state.panels.reduce((s, p) => s + p.mainA, 0);
   for (const p of state.panels) {
-    const t = panelTotals.get(p.id)!;
+    const t = totals.get(p.id)!;
     const lay = layouts.get(p.id)!;
     const pct = p.mainA ? (maxPhase(t.worst, mode) / p.mainA) * 100 : 0;
-    if (pct > 100) warnings.push(`${p.name}: worst-case load exceeds its ${p.mainA} A main.`);
+    const what = p.fedFrom ? 'feeder' : 'main';
+    if (pct > 100) warnings.push(`${p.name}: worst-case load exceeds its ${p.mainA} A ${what}.`);
     if (lay.unplaced.length) warnings.push(`${p.name}: ${lay.unplaced.length} circuit(s) don't fit.`);
     if (lay.conflicts.length) warnings.push(`${p.name}: ${lay.conflicts.length} locked slot conflict(s).`);
   }
@@ -43,8 +42,7 @@ export function SummaryBar({ state, service, panelTotals, layouts }: Props) {
           <div className="muted small-caps">Service utilization (worst case)</div>
           <div className={`big pct ${level(worstPct)}`}>{Math.round(worstPct)}%</div>
           <div className="muted">
-            Connected {Math.round(connPct)}% · {serviceA} A service
-            {state.panels.length > 1 && ` · ${mainSum} A of panel mains`}
+            Connected {Math.round(connPct)}% · {serviceA} A service, all panels combined
           </div>
         </div>
         <div className="phase-bars">

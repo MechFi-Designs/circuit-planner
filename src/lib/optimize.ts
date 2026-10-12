@@ -1,7 +1,8 @@
-import type { Load, Panel, ServiceMode } from '../types';
+import type { AppState, Load, Panel, ServiceMode } from '../types';
+import { derive, feederTotals, postOrder } from './derive';
 import { MODE_PHASES, phaseOfSlot, polesOf } from './nec';
 import { Board, spanOf, type PanelLayout } from './placement';
-import { phaseTotals, worstAmps, zeroPhases, type PhaseAmps } from './loadCalc';
+import { phaseTotals, worstAmps, zeroPhases, type PhaseAmps, type PhaseTotals } from './loadCalc';
 
 export interface OptimizeResult {
   /** New starting slot for each movable load. Empty when nothing changed. */
@@ -38,14 +39,19 @@ function better(a: Score, b: Score): boolean {
  * Re-slot unlocked circuits in a panel to balance worst-case phase current.
  * Greedy seed (largest first, best phase position) followed by local search
  * of single moves and same-pole-count swaps.
+ *
+ * `feeders` holds subpanel totals for feeder breakers. A feeder's poles always
+ * cover every phase (2-pole split / 3-pole 3-phase), so its contribution is
+ * fixed and it only competes for space.
  */
 export function optimizePanel(
   panel: Panel,
   loads: Load[],
   mode: ServiceMode,
   current: PanelLayout,
+  feeders: Map<string, PhaseTotals> = new Map(),
 ): OptimizeResult {
-  const before = phaseTotals(loads, current.placements).worst;
+  const before = phaseTotals(loads, current.placements, feeders).worst;
   const noChange = (failed: boolean): OptimizeResult => ({
     slots: new Map(),
     before,
@@ -59,6 +65,11 @@ export function optimizePanel(
   const amps = zeroPhases();
 
   const add = (l: Load, start: number, sign: 1 | -1, target: PhaseAmps = amps) => {
+    const fed = feeders.get(l.id);
+    if (fed) {
+      for (const ph of MODE_PHASES[mode]) target[ph] += sign * fed.worst[ph];
+      return;
+    }
     const w = worstAmps(l);
     for (const s of spanOf(start, polesOf(l.kind))) target[phaseOfSlot(s, mode)] += sign * w;
   };
@@ -69,16 +80,15 @@ export function optimizePanel(
       board.place(l.id, p.slot, polesOf(l.kind));
       starts.set(l.id, p.slot);
       add(l, p.slot, 1);
+    } else if (l.locked && feeders.has(l.id)) {
+      add(l, 0, 1); // unplaced locked feeder: its load still counts
     }
   }
 
   const movable = loads
     .map((l, i) => ({ l, i }))
     .filter(({ l }) => !l.locked)
-    .sort(
-      (a, b) =>
-        polesOf(b.l.kind) - polesOf(a.l.kind) || worstAmps(b.l) - worstAmps(a.l) || a.i - b.i,
-    )
+    .sort((a, b) => polesOf(b.l.kind) - polesOf(a.l.kind) || worstAmps(b.l) - worstAmps(a.l) || a.i - b.i)
     .map(({ l }) => l);
   if (!movable.length) return noChange(false);
 
@@ -169,7 +179,7 @@ export function optimizePanel(
       .map((s) => phaseOfSlot(s, mode))
       .sort()
       .join('');
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const l of [...movable].sort((a, b) => starts.get(a.id)! - starts.get(b.id)!)) {
       const poles = polesOf(l.kind);
@@ -195,4 +205,35 @@ export function optimizePanel(
   const slots = new Map<string, number>();
   for (const l of movable) slots.set(l.id, starts.get(l.id)!);
   return { slots, before, after: { ...amps }, improved: true, failed: false };
+}
+
+export interface OptimizeAllResult {
+  slots: Map<string, number>;
+  before: PhaseAmps;
+  after: PhaseAmps;
+  /** Names of panels whose circuits couldn't all be fit around locked ones. */
+  failed: string[];
+}
+
+/**
+ * Optimize every panel, subpanels first, so each parent sees its subpanels'
+ * rebalanced totals through their feeders.
+ */
+export function optimizeAll(state: AppState): OptimizeAllResult {
+  let working = state;
+  const slots = new Map<string, number>();
+  const failed: string[] = [];
+  for (const p of postOrder(state.panels)) {
+    const d = derive(working);
+    const loads = working.loads.filter((l) => l.panelId === p.id);
+    const res = optimizePanel(p, loads, state.mode, d.layouts.get(p.id)!, feederTotals(d, loads));
+    if (res.failed) failed.push(p.name);
+    if (!res.improved) continue;
+    res.slots.forEach((s, id) => slots.set(id, s));
+    working = {
+      ...working,
+      loads: working.loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l)),
+    };
+  }
+  return { slots, before: derive(state).service.worst, after: derive(working).service.worst, failed };
 }

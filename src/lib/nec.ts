@@ -2,8 +2,8 @@ import type { LoadKind, Phase, ServiceMode } from '../types';
 
 /** NEC 240.6(A) standard overcurrent device ratings (common range). */
 export const BREAKER_SIZES = [
-  15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 225, 250, 300, 350,
-  400, 450, 500, 600, 700, 800, 1000, 1200,
+  15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500, 600,
+  700, 800, 1000, 1200,
 ];
 
 export const CONTINUOUS_FACTOR = 1.25;
@@ -164,6 +164,11 @@ export const MODE_PHASES: Record<ServiceMode, Phase[]> = {
 export function remapKind(kind: LoadKind, mode: ServiceMode): LoadKind {
   if (mode === 'split') return kind === '120-1p' ? '120-1p' : '240-2p';
   return kind === '240-2p' ? '208-2p' : kind;
+}
+
+/** Feeder breaker type for a subpanel: 2-pole split phase, 3-pole 3-phase. */
+export function feederKind(mode: ServiceMode): LoadKind {
+  return mode === 'split' ? '240-2p' : '208-3p';
 }
 
 export function polesOf(kind: LoadKind): number {

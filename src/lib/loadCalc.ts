@@ -20,11 +20,25 @@ export function worstAmps(load: Load): number {
 /**
  * Per-phase current. Each circuit's line current is added to every phase its
  * poles land on (conservative: ignores the vector sum of line-to-line loads).
+ * Feeder breakers add their subpanel's per-phase totals instead, placed or not,
+ * since the downstream load is real either way.
  */
-export function phaseTotals(loads: Load[], placements: Map<string, Placement>): PhaseTotals {
+export function phaseTotals(
+  loads: Load[],
+  placements: Map<string, Placement>,
+  feeders: Map<string, PhaseTotals> = new Map(),
+): PhaseTotals {
   const connected = zeroPhases();
   const worst = zeroPhases();
   for (const l of loads) {
+    const fed = feeders.get(l.id);
+    if (fed) {
+      for (const ph of ['A', 'B', 'C'] as const) {
+        connected[ph] += fed.connected[ph];
+        worst[ph] += fed.worst[ph];
+      }
+      continue;
+    }
     const p = placements.get(l.id);
     if (!p || !(l.amps > 0)) continue;
     for (const ph of p.phases) {

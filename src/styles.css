@@ -55,7 +55,12 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font:
+    14px/1.4 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
 }
 
 input,
@@ -340,17 +345,31 @@ td.strong {
   font-weight: 600;
 }
 
+td.strong.over {
+  color: var(--over);
+}
+
+.feeder-name {
+  font-weight: 600;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
 td.center {
   text-align: center;
 }
 
 .panel-config input:not([type='number']) {
   width: 100%;
-  min-width: 90px;
+  min-width: 80px;
 }
 
 .panel-config input[type='number'] {
-  width: 64px;
+  width: 58px;
+}
+
+.panel-config select {
+  max-width: 110px;
 }
 
 /* ---------- load table ---------- */
@@ -384,7 +403,11 @@ td.center {
 }
 
 .slot-select {
-  width: 84px;
+  width: 96px;
+}
+
+.nowrap {
+  white-space: nowrap;
 }
 
 .chips {
@@ -637,6 +660,12 @@ td.center {
 .slot.multi .breaker {
   /* Tie bar look for multi-pole breakers. */
   border-left: 4px solid var(--panel-frame);
+}
+
+.breaker.feeder {
+  border-style: dashed;
+  border-left-style: solid;
+  font-weight: 600;
 }
 
 .breaker.half {

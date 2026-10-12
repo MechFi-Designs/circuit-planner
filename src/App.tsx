@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ServiceMode } from './types';
-import { defaultState, initialState, persist, reducer, shareUrl } from './state';
-import { layoutPanel, type PanelLayout } from './lib/placement';
-import { addTotals, phaseTotals, zeroPhases, type PhaseAmps, type PhaseTotals } from './lib/loadCalc';
-import { optimizePanel } from './lib/optimize';
+import { defaultState, exportFile, initialState, parseFile, persist, reducer, shareUrl } from './state';
+import { derive } from './lib/derive';
+import { optimizeAll } from './lib/optimize';
 import { MODE_LABEL, MODE_PHASES } from './lib/nec';
 import { fmtA } from './lib/sizing';
 import { ServiceConfig } from './components/ServiceConfig';
@@ -26,20 +25,8 @@ export default function App() {
 
   useEffect(() => persist(state), [state]);
 
-  const { layouts, panelTotals, service } = useMemo(() => {
-    const layouts = new Map<string, PanelLayout>();
-    const panelTotals = new Map<string, PhaseTotals>();
-    let service: PhaseTotals = { connected: zeroPhases(), worst: zeroPhases() };
-    for (const p of state.panels) {
-      const loads = state.loads.filter((l) => l.panelId === p.id);
-      const lay = layoutPanel(p, loads, state.mode);
-      const t = phaseTotals(loads, lay.placements);
-      layouts.set(p.id, lay);
-      panelTotals.set(p.id, t);
-      service = addTotals(service, t);
-    }
-    return { layouts, panelTotals, service };
-  }, [state]);
+  const derived = useMemo(() => derive(state), [state]);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const setMode = (mode: ServiceMode) => {
     if (mode !== state.mode) {
@@ -49,27 +36,25 @@ export default function App() {
   };
 
   const optimize = () => {
-    const slots = new Map<string, number>();
-    const after: PhaseAmps = { ...service.worst };
-    const failed: string[] = [];
-    for (const p of state.panels) {
-      const loads = state.loads.filter((l) => l.panelId === p.id);
-      const res = optimizePanel(p, loads, state.mode, layouts.get(p.id)!);
-      if (res.failed) failed.push(p.name);
-      if (!res.improved) continue;
-      res.slots.forEach((s, id) => slots.set(id, s));
-      for (const ph of MODE_PHASES[state.mode]) after[ph] += res.after[ph] - res.before[ph];
-    }
-    if (slots.size) {
-      dispatch({ type: 'applySlots', slots });
-      const parts = MODE_PHASES[state.mode].map(
-        (ph) => `${ph} ${fmtA(service.worst[ph])}→${fmtA(after[ph])}`,
-      );
-      setNotice({ kind: 'ok', text: `Rebalanced (worst-case A): ${parts.join(' · ')}` });
-    } else if (failed.length) {
-      setNotice({ kind: 'bad', text: `Couldn't fit all circuits around locked ones in ${failed.join(', ')}.` });
+    const res = optimizeAll(state);
+    if (res.slots.size) {
+      dispatch({ type: 'applySlots', slots: res.slots });
+      const parts = MODE_PHASES[state.mode].map((ph) => `${ph} ${fmtA(res.before[ph])}→${fmtA(res.after[ph])}`);
+      setNotice({ kind: 'ok', text: `Rebalanced service (worst-case A): ${parts.join(' · ')}` });
+    } else if (res.failed.length) {
+      setNotice({ kind: 'bad', text: `Couldn't fit all circuits around locked ones in ${res.failed.join(', ')}.` });
     } else {
       setNotice({ kind: 'info', text: 'Already as balanced as it gets with the current locks.' });
+    }
+  };
+
+  const openFile = async (file: File) => {
+    const next = parseFile(await file.text());
+    if (next) {
+      dispatch({ type: 'replace', state: next });
+      setNotice({ kind: 'ok', text: `Opened ${file.name}.` });
+    } else {
+      setNotice({ kind: 'bad', text: `${file.name} isn't a Circuit Planner file.` });
     }
   };
 
@@ -94,15 +79,38 @@ export default function App() {
         </div>
         <div className="segmented" role="radiogroup" aria-label="Service type">
           {(['split', 'three'] as const).map((m) => (
-            <button key={m} role="radio" aria-checked={state.mode === m} className={state.mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+            <button
+              key={m}
+              role="radio"
+              aria-checked={state.mode === m}
+              className={state.mode === m ? 'on' : ''}
+              onClick={() => setMode(m)}
+            >
               {MODE_LABEL[m]}
             </button>
           ))}
         </div>
         <div className="actions">
-          <button className="btn" onClick={share}>
+          <button className="btn" onClick={share} title="Copy a link containing this whole design">
             Share link
           </button>
+          <button className="btn" onClick={() => exportFile(state)} title="Download this design as a .json file">
+            Save file
+          </button>
+          <button className="btn" onClick={() => fileInput.current?.click()} title="Open a saved .json design">
+            Open file
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) openFile(f);
+              e.target.value = '';
+            }}
+          />
           <button
             className="btn ghost"
             onClick={() => {
@@ -115,7 +123,8 @@ export default function App() {
             className="btn ghost"
             title="Load the example design"
             onClick={() => {
-              if (confirm('Replace everything with the example design?')) dispatch({ type: 'replace', state: defaultState() });
+              if (confirm('Replace everything with the example design?'))
+                dispatch({ type: 'replace', state: defaultState() });
             }}
           >
             Example
@@ -132,7 +141,7 @@ export default function App() {
         </div>
       )}
 
-      <SummaryBar state={state} service={service} panelTotals={panelTotals} layouts={layouts} />
+      <SummaryBar state={state} derived={derived} />
 
       <main className="layout">
         <div className="col-left">
@@ -141,10 +150,8 @@ export default function App() {
             <PanelDiagram
               key={p.id}
               panel={p}
-              layout={layouts.get(p.id)!}
-              loads={state.loads.filter((l) => l.panelId === p.id)}
-              mode={state.mode}
-              totals={panelTotals.get(p.id)!}
+              state={state}
+              derived={derived}
               selectedId={selectedId}
               onSelect={setSelectedId}
             />
@@ -154,7 +161,7 @@ export default function App() {
           <LoadTable
             state={state}
             dispatch={dispatch}
-            layouts={layouts}
+            derived={derived}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onOptimize={optimize}
@@ -163,9 +170,9 @@ export default function App() {
       </main>
 
       <footer className="footer muted">
-        Planning aid only, based on NEC 2023 Table 310.16 (THHN, 75 °C terminations), 240.4(D) and 240.6(A). It
-        doesn't account for ambient or conduit-fill derating, voltage drop, or local amendments. Verify with your
-        AHJ and a licensed electrician.
+        Planning aid only, based on NEC 2023 Table 310.16 (THHN, 75 °C terminations), 240.4(D) and 240.6(A). It doesn't
+        account for ambient or conduit-fill derating, voltage drop, or local amendments. Verify with your AHJ and a
+        licensed electrician.
       </footer>
     </div>
   );

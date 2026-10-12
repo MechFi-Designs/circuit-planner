@@ -41,7 +41,7 @@ export class Board {
   ) {}
 
   isEmpty(space: number): boolean {
-    return !this.multi.has(space) && !(this.singles.get(space)?.length);
+    return !this.multi.has(space) && !this.singles.get(space)?.length;
   }
 
   get tandemAllowed(): boolean {

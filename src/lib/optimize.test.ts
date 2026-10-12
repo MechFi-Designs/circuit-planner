@@ -4,10 +4,18 @@ import { layoutPanel } from './placement';
 import { optimizePanel } from './optimize';
 import { phaseTotals } from './loadCalc';
 
-const panel: Panel = { id: 'p', name: 'P', mainA: 200, spaces: 20, maxCircuits: 40 };
+const panel: Panel = { id: 'p', name: 'P', mainA: 200, fedFrom: null, spaces: 20, maxCircuits: 40 };
 let n = 0;
 const load = (kind: LoadKind, amps: number, extra: Partial<Load> = {}): Load => ({
-  id: `l${n++}`, panelId: 'p', name: '', amps, kind, continuous: false, slot: null, locked: false, ...extra,
+  id: `l${n++}`,
+  panelId: 'p',
+  name: '',
+  amps,
+  kind,
+  continuous: false,
+  slot: null,
+  locked: false,
+  ...extra,
 });
 
 function run(loads: Load[], mode: ServiceMode) {

@@ -8,6 +8,10 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 
 - **Service mode toggle:** split phase 120/240 V or commercial 3-phase 208Y/120 V.
 - **Panels:** set each panel's main breaker, number of spaces and max circuits. The default is 20 spaces / 40 circuits, and any circuits beyond the space count go in as tandem breakers.
+- **Subpanels:** set where each panel is **fed from**: the service or another panel.
+  - A subpanel gets a feeder breaker in its parent, which takes up spaces there, has its wire sized, and shows on the panel picture.
+  - The subpanel's load counts toward its parent's totals, and every load counts exactly once against the service.
+  - Panels fed directly from the service share the one service rating.
 - **Load table:** name, max current, circuit type and continuous flag for each circuit.
   - Split phase: 120 V 1Φ (1-pole) or 240 V 1Φ (2-pole).
   - 3-phase: 120 V 1Φ (1-pole), 208 V 1Φ (2-pole) or 208 V 3Φ (3-pole).
@@ -15,7 +19,9 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 - **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows.
 - **⚖ Optimize phases:** moves unlocked circuits between slots to even out the worst-case current on each phase. Locked circuits (🔒) stay where they are.
 - **Utilization:** amps on each phase, shown as a percentage of the service rating and of each panel's main breaker.
-- **Saving and sharing:** your design autosaves in the browser. **Share link** copies a URL containing the whole design.
+- **Saving and sharing:** your design autosaves in the browser.
+  - **Save file** downloads it as `.json` and **Open file** loads it back, so it survives clearing browser data.
+  - **Share link** copies a URL containing the whole design.
 
 ## Sizing rules
 

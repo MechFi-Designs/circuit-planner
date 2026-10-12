@@ -1,40 +1,47 @@
 import type { ReactNode } from 'react';
-import type { Load, Panel, ServiceMode } from '../types';
-import type { PanelLayout } from '../lib/placement';
-import type { PhaseTotals } from '../lib/loadCalc';
+import type { AppState, Panel } from '../types';
+import type { Derived } from '../lib/derive';
 import { maxPhase } from '../lib/loadCalc';
 import { MODE_PHASES, phaseOfSlot } from '../lib/nec';
-import { fmtA, sizeLoad } from '../lib/sizing';
+import { fmtA } from '../lib/sizing';
 import { PhaseChip } from './PhaseChip';
 
 interface Props {
   panel: Panel;
-  layout: PanelLayout;
-  loads: Load[];
-  mode: ServiceMode;
-  totals: PhaseTotals;
+  state: AppState;
+  derived: Derived;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }
 
 const ROW_PX = 34;
 
-export function PanelDiagram({ panel, layout, loads, mode, totals, selectedId, onSelect }: Props) {
-  const byId = new Map(loads.map((l) => [l.id, l]));
+export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Props) {
+  const { mode } = state;
+  const layout = derived.layouts.get(panel.id)!;
+  const totals = derived.totals.get(panel.id)!;
+  const parent = state.panels.find((p) => p.id === panel.fedFrom);
+  const byId = new Map(state.loads.filter((l) => l.panelId === panel.id).map((l) => [l.id, l]));
   const rows = Math.ceil(panel.spaces / 2);
   const cells: ReactNode[] = [];
 
   const breaker = (id: string, compact: boolean) => {
     const l = byId.get(id)!;
-    const s = sizeLoad(l);
+    const s = derived.sizing.get(id)!;
+    const sub = derived.feederOf.get(id);
+    const name = sub ? `→ ${sub.name}` : l.name || 'Unnamed';
     return (
       <button
         key={id}
-        className={`breaker${selectedId === id ? ' selected' : ''}${compact ? ' half' : ''}`}
+        className={`breaker${selectedId === id ? ' selected' : ''}${compact ? ' half' : ''}${sub ? ' feeder' : ''}`}
         onClick={() => onSelect(selectedId === id ? null : id)}
-        title={`${l.name || 'Unnamed'} — ${fmtA(l.amps)} A${l.continuous ? ' continuous' : ''}`}
+        title={
+          sub
+            ? `Feeder to ${sub.name}: ${fmtA(s.required)} A worst-case phase`
+            : `${name} — ${fmtA(l.amps)} A${l.continuous ? ' continuous' : ''}`
+        }
       >
-        <span className="breaker-name">{l.name || 'Unnamed'}</span>
+        <span className="breaker-name">{name}</span>
         <span className="breaker-rating">{s.breaker ? `${s.breaker}` : '—'}</span>
       </button>
     );
@@ -54,7 +61,11 @@ export function PanelDiagram({ panel, layout, loads, mode, totals, selectedId, o
       const numCol = side === 0 ? 1 : 5;
       const col = side === 0 ? 2 : 4;
       cells.push(
-        <div key={`n${space}`} className={`space-num ${side ? 'right' : 'left'}`} style={{ gridRow: row, gridColumn: numCol }}>
+        <div
+          key={`n${space}`}
+          className={`space-num ${side ? 'right' : 'left'}`}
+          style={{ gridRow: row, gridColumn: numCol }}
+        >
           {space}
         </div>,
       );
@@ -77,7 +88,11 @@ export function PanelDiagram({ panel, layout, loads, mode, totals, selectedId, o
         );
       } else {
         cells.push(
-          <div key={`b${space}`} className={`slot${occ.length > 1 ? ' tandem' : ''}`} style={{ gridRow: row, gridColumn: col }}>
+          <div
+            key={`b${space}`}
+            className={`slot${occ.length > 1 ? ' tandem' : ''}`}
+            style={{ gridRow: row, gridColumn: col }}
+          >
             {occ.map((id) => breaker(id, occ.length > 1))}
           </div>,
         );
@@ -93,7 +108,8 @@ export function PanelDiagram({ panel, layout, loads, mode, totals, selectedId, o
       <div className="card-head">
         <h2>{panel.name}</h2>
         <span className="muted">
-          {panel.mainA} A main · {layout.spacesUsed}/{panel.spaces} spaces · {layout.circuitsUsed}/{panel.maxCircuits} circuits
+          {parent ? `${panel.mainA} A feeder from ${parent.name}` : `${panel.mainA} A main`} · {layout.spacesUsed}/
+          {panel.spaces} spaces · {layout.circuitsUsed}/{panel.maxCircuits} circuits
         </span>
       </div>
       <div className="phase-row">
@@ -102,10 +118,14 @@ export function PanelDiagram({ panel, layout, loads, mode, totals, selectedId, o
             <PhaseChip phase={p} /> {fmtA(totals.worst[p])} A
           </span>
         ))}
-        <span className={`pct ${pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok'}`}>{Math.round(pct)}% of main</span>
+        <span className={`pct ${pct > 100 ? 'over' : pct > 80 ? 'warn' : 'ok'}`}>
+          {Math.round(pct)}% of {parent ? 'feeder' : 'main'}
+        </span>
       </div>
       <div className="panel-frame">
-        <div className="panel-main">MAIN {panel.mainA} A</div>
+        <div className="panel-main">
+          {parent ? `FED FROM ${parent.name.toUpperCase()} · ${panel.mainA} A` : `MAIN ${panel.mainA} A`}
+        </div>
         <div className="panel-grid" style={{ gridTemplateRows: `repeat(${rows}, ${ROW_PX}px)` }}>
           {cells}
         </div>

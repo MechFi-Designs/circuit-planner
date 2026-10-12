@@ -1,16 +1,16 @@
 import { useEffect, type Dispatch } from 'react';
 import type { AppState, Load, LoadKind, Panel } from '../types';
 import type { Action } from '../state';
-import type { PanelLayout } from '../lib/placement';
+import type { Derived } from '../lib/derive';
 import { formatWire, KINDS, KINDS_BY_MODE, type WireResult } from '../lib/nec';
-import { fmtA, sizeLoad } from '../lib/sizing';
+import { fmtA } from '../lib/sizing';
 import { NumInput } from './NumInput';
 import { PhaseChip } from './PhaseChip';
 
 interface Props {
   state: AppState;
   dispatch: Dispatch<Action>;
-  layouts: Map<string, PanelLayout>;
+  derived: Derived;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onOptimize: () => void;
@@ -22,7 +22,7 @@ function wireTitle(w: WireResult | null, breaker: number | null): string | undef
   return `75 °C: ${w.a75} A${per} — termination limit, governs (≥ ${breaker} A breaker)\n90 °C: ${w.a90} A${per} — THHN rating, use as the derating basis`;
 }
 
-export function LoadTable({ state, dispatch, layouts, selectedId, onSelect, onOptimize }: Props) {
+export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOptimize }: Props) {
   const multiPanel = state.panels.length > 1;
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export function LoadTable({ state, dispatch, layouts, selectedId, onSelect, onOp
           panel={panel}
           state={state}
           dispatch={dispatch}
-          layout={layouts.get(panel.id)!}
+          derived={derived}
           multiPanel={multiPanel}
           selectedId={selectedId}
           onSelect={onSelect}
@@ -58,8 +58,8 @@ export function LoadTable({ state, dispatch, layouts, selectedId, onSelect, onOp
       ))}
 
       <p className="legend muted">
-        Breaker = next standard size ≥ load (× 1.25 if continuous). Wire = smallest THHN whose 75 °C ampacity is
-        ≥ the breaker, with the 240.4(D) small-conductor limits applied. Hover a wire size to see both ratings.
+        Breaker = next standard size ≥ load (× 1.25 if continuous). Wire = smallest THHN whose 75 °C ampacity is ≥ the
+        breaker, with the 240.4(D) small-conductor limits applied. Hover a wire size to see both ratings.
       </p>
     </section>
   );
@@ -69,13 +69,14 @@ interface PanelLoadsProps {
   panel: Panel;
   state: AppState;
   dispatch: Dispatch<Action>;
-  layout: PanelLayout;
+  derived: Derived;
   multiPanel: boolean;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }
 
-function PanelLoads({ panel, state, dispatch, layout, multiPanel, selectedId, onSelect }: PanelLoadsProps) {
+function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, onSelect }: PanelLoadsProps) {
+  const layout = derived.layouts.get(panel.id)!;
   const loads = state.loads.filter((l) => l.panelId === panel.id);
   const update = (id: string, patch: Partial<Load>) => dispatch({ type: 'updateLoad', id, patch });
 
@@ -103,7 +104,8 @@ function PanelLoads({ panel, state, dispatch, layout, multiPanel, selectedId, on
           </thead>
           <tbody>
             {loads.map((l) => {
-              const s = sizeLoad(l);
+              const s = derived.sizing.get(l.id)!;
+              const sub = derived.feederOf.get(l.id);
               const p = layout.placements.get(l.id);
               const poles = KINDS[l.kind].poles;
               const lastStart = panel.spaces - 2 * (poles - 1);
@@ -138,47 +140,74 @@ function PanelLoads({ panel, state, dispatch, layout, multiPanel, selectedId, on
                     </select>
                   </td>
                   <td className="name-col">
-                    <input
-                      value={l.name}
-                      placeholder="Circuit name"
-                      aria-label="Circuit name"
-                      onChange={(e) => update(l.id, { name: e.target.value })}
-                    />
+                    {sub ? (
+                      <span className="feeder-name" title="Change in Service & panels → Fed from">
+                        → {sub.name} feeder
+                      </span>
+                    ) : (
+                      <input
+                        value={l.name}
+                        placeholder="Circuit name"
+                        aria-label="Circuit name"
+                        onChange={(e) => update(l.id, { name: e.target.value })}
+                      />
+                    )}
                   </td>
                   <td>
-                    <NumInput
-                      live
-                      min={0}
-                      step="any"
-                      className="amps"
-                      value={l.amps}
-                      aria-label="Max current"
-                      onCommit={(amps) => update(l.id, { amps: Math.max(0, amps) })}
-                    />
+                    {sub ? (
+                      <span className="num" title={`${sub.name} worst-case phase load`}>
+                        {fmtA(s.required)}
+                      </span>
+                    ) : (
+                      <NumInput
+                        live
+                        min={0}
+                        step="any"
+                        className="amps"
+                        value={l.amps}
+                        aria-label="Max current"
+                        onCommit={(amps) => update(l.id, { amps: Math.max(0, amps) })}
+                      />
+                    )}
                   </td>
                   <td>
-                    <select
-                      value={l.kind}
-                      aria-label="Circuit type"
-                      onChange={(e) => update(l.id, { kind: e.target.value as LoadKind })}
-                    >
-                      {KINDS_BY_MODE[state.mode].map((k) => (
-                        <option key={k} value={k}>
-                          {KINDS[k].label}
-                        </option>
-                      ))}
-                    </select>
+                    {sub ? (
+                      <span className="muted nowrap">{poles}-pole feeder</span>
+                    ) : (
+                      <select
+                        value={l.kind}
+                        aria-label="Circuit type"
+                        onChange={(e) => update(l.id, { kind: e.target.value as LoadKind })}
+                      >
+                        {KINDS_BY_MODE[state.mode].map((k) => (
+                          <option key={k} value={k}>
+                            {KINDS[k].label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="center">
-                    <input
-                      type="checkbox"
-                      checked={l.continuous}
-                      aria-label="Continuous"
-                      onChange={(e) => update(l.id, { continuous: e.target.checked })}
-                    />
+                    {!sub && (
+                      <input
+                        type="checkbox"
+                        checked={l.continuous}
+                        aria-label="Continuous"
+                        onChange={(e) => update(l.id, { continuous: e.target.checked })}
+                      />
+                    )}
                   </td>
                   <td className="num">{s.breaker ? fmtA(s.required) : '—'}</td>
-                  <td className="num strong">{s.breaker ? `${s.breaker} A ${poles}P` : '—'}</td>
+                  <td
+                    className={`num strong${sub && s.breaker && s.required > s.breaker ? ' over' : ''}`}
+                    title={
+                      sub && s.breaker && s.required > s.breaker
+                        ? `${sub.name} load exceeds its feeder breaker`
+                        : undefined
+                    }
+                  >
+                    {s.breaker ? `${s.breaker} A ${poles}P` : '—'}
+                  </td>
                   <td className="num" title={wireTitle(s.cu, s.breaker)}>
                     {formatWire(s.cu)}
                   </td>
@@ -191,10 +220,17 @@ function PanelLoads({ panel, state, dispatch, layout, multiPanel, selectedId, on
                         {p.phases.map((ph, i) => (
                           <PhaseChip key={i} phase={ph} />
                         ))}
-                        {p.tandem && <span className="tag" title="Tandem breaker">T</span>}
+                        {p.tandem && (
+                          <span className="tag" title="Tandem breaker">
+                            T
+                          </span>
+                        )}
                       </span>
                     ) : (
-                      <span className="tag bad" title={conflict ? 'Locked slot is taken or out of range' : 'Panel is full'}>
+                      <span
+                        className="tag bad"
+                        title={conflict ? 'Locked slot is taken or out of range' : 'Panel is full'}
+                      >
                         {conflict ? 'conflict' : 'no room'}
                       </span>
                     )}
@@ -202,7 +238,11 @@ function PanelLoads({ panel, state, dispatch, layout, multiPanel, selectedId, on
                   <td className="center">
                     <button
                       className={`icon-btn lock${l.locked ? ' on' : ''}`}
-                      title={l.locked ? 'Locked: optimize won’t move this circuit' : 'Unlocked: optimize may move this circuit'}
+                      title={
+                        l.locked
+                          ? 'Locked: optimize won’t move this circuit'
+                          : 'Unlocked: optimize may move this circuit'
+                      }
                       aria-pressed={l.locked}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -214,30 +254,34 @@ function PanelLoads({ panel, state, dispatch, layout, multiPanel, selectedId, on
                   </td>
                   {multiPanel && (
                     <td>
-                      <select
-                        value={l.panelId}
-                        aria-label="Panel"
-                        onChange={(e) => update(l.id, { panelId: e.target.value, slot: null, locked: false })}
-                      >
-                        {state.panels.map((pp) => (
-                          <option key={pp.id} value={pp.id}>
-                            {pp.name}
-                          </option>
-                        ))}
-                      </select>
+                      {!sub && (
+                        <select
+                          value={l.panelId}
+                          aria-label="Panel"
+                          onChange={(e) => update(l.id, { panelId: e.target.value, slot: null, locked: false })}
+                        >
+                          {state.panels.map((pp) => (
+                            <option key={pp.id} value={pp.id}>
+                              {pp.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                   )}
                   <td>
-                    <button
-                      className="icon-btn"
-                      title="Delete circuit"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dispatch({ type: 'removeLoad', id: l.id });
-                      }}
-                    >
-                      ✕
-                    </button>
+                    {!sub && (
+                      <button
+                        className="icon-btn"
+                        title="Delete circuit"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatch({ type: 'removeLoad', id: l.id });
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </td>
                 </tr>
               );

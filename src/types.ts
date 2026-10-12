@@ -8,8 +8,10 @@ export type LoadKind = '120-1p' | '240-2p' | '208-2p' | '208-3p';
 export interface Panel {
   id: string;
   name: string;
-  /** Main breaker rating (A). */
+  /** Main breaker rating (A), or the feeder breaker rating when fed from another panel. */
   mainA: number;
+  /** Parent panel id, or null when fed directly from the service. */
+  fedFrom: string | null;
   /** Physical breaker spaces. */
   spaces: number;
   /** Max circuits (spaces × 2 when tandems are allowed everywhere). */
@@ -28,6 +30,8 @@ export interface Load {
   slot: number | null;
   /** Locked circuits keep their slot when optimizing. */
   locked: boolean;
+  /** Set on the feeder breaker that supplies a subpanel (its id). */
+  feeds?: string;
 }
 
 export interface AppState {
