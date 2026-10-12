@@ -15,6 +15,7 @@ const load = (panelId: string, kind: LoadKind, amps: number, extra: Partial<Load
   estAmps: null,
   kind,
   continuous: false,
+  tandem: false,
   slot: null,
   locked: false,
   ...extra,

@@ -95,6 +95,7 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
   const layout = derived.layouts.get(panel.id)!;
   const loads = state.loads.filter((l) => l.panelId === panel.id);
   const update = (id: string, patch: Partial<Load>) => dispatch({ type: 'updateLoad', id, patch });
+  const tandemOk = panel.maxCircuits > panel.spaces;
 
   return (
     <div className="panel-loads">
@@ -109,6 +110,7 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
               <th title="Power at max current">kW</th>
               <th>Circuit</th>
               <th title="Continuous load (3 h or more): sized at 125%">Cont.</th>
+              <th title="Tandem (twin) breaker: two 1-pole circuits share one space">Tandem</th>
               <th title="Estimated typical running current. Blank = same as max.">Est. A</th>
               <th title="Required ampacity">Req’d</th>
               <th>Breaker</th>
@@ -152,7 +154,9 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                         )
                       }
                     >
-                      <option value="">{p && !(l.locked && l.slot != null) ? `Auto · ${p.slot}` : 'Auto'}</option>
+                      <option value="">
+                        {p && !(l.locked && l.slot != null) ? `Auto · ${p.slot}${p.half ?? ''}` : 'Auto'}
+                      </option>
                       {Array.from({ length: Math.max(0, lastStart) }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>
                           {n}
@@ -221,6 +225,24 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                       />
                     )}
                   </td>
+                  <td className="center">
+                    {!sub && (
+                      <input
+                        type="checkbox"
+                        checked={l.tandem && poles === 1}
+                        disabled={poles > 1 || !tandemOk}
+                        aria-label="Tandem breaker"
+                        title={
+                          poles > 1
+                            ? 'Only 1-pole circuits go on tandem breakers'
+                            : !tandemOk
+                              ? `${panel.name} doesn't take tandems: raise its Circuits above its Spaces`
+                              : 'Share a space with another tandem circuit'
+                        }
+                        onChange={(e) => update(l.id, { tandem: e.target.checked })}
+                      />
+                    )}
+                  </td>
                   <td>
                     {sub ? (
                       <span className="num pad" title={`${sub.name} estimated phase load`}>
@@ -263,8 +285,8 @@ function PanelLoads({ panel, state, dispatch, derived, multiPanel, selectedId, o
                           <PhaseChip key={i} phase={ph} />
                         ))}
                         {p.tandem && (
-                          <span className="tag" title="Tandem breaker">
-                            T
+                          <span className="tag" title={`Tandem breaker, half ${p.half}`}>
+                            T{p.half}
                           </span>
                         )}
                       </span>

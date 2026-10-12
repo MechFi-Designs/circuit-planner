@@ -1,7 +1,7 @@
 import type { AppState } from '../types';
 import type { Derived } from '../lib/derive';
 import { imbalance, maxPhase } from '../lib/loadCalc';
-import { MODE_PHASES } from '../lib/nec';
+import { MODE_PHASES, polesOf } from '../lib/nec';
 import { fmtA, fmtKw } from '../lib/sizing';
 import { PhaseChip } from './PhaseChip';
 
@@ -26,7 +26,22 @@ export function SummaryBar({ state, derived, advice }: Props) {
   if (worstPct > 80 && worstPct <= 100) warnings.push(`Worst-case load is above 80% of the ${serviceA} A service.`);
   for (const p of state.panels) {
     const lay = layouts.get(p.id)!;
-    if (lay.unplaced.length) warnings.push(`${p.name}: ${lay.unplaced.length} circuit(s) don't fit.`);
+    const own = state.loads.filter((l) => l.panelId === p.id && !l.feeds && polesOf(l.kind) === 1);
+    const tandemOk = p.maxCircuits > p.spaces;
+    if (lay.unplaced.length) {
+      const hint = !tandemOk
+        ? ' Add spaces, or if the panel takes tandem breakers, raise its Circuits above its Spaces.'
+        : own.some((l) => !l.tandem)
+          ? ` Mark some 1-pole circuits as Tandem to double them up (up to ${p.maxCircuits} circuits).`
+          : '';
+      warnings.push(`${p.name}: ${lay.unplaced.length} circuit(s) don't fit.${hint}`);
+    }
+    const flagged = own.filter((l) => l.tandem).length;
+    if (flagged && !tandemOk) {
+      warnings.push(
+        `${p.name} doesn't take tandems (Circuits = Spaces), so its ${flagged} tandem circuit${flagged > 1 ? 's use' : ' uses'} full spaces.`,
+      );
+    }
     if (lay.conflicts.length) warnings.push(`${p.name}: ${lay.conflicts.length} locked slot conflict(s).`);
   }
   const imb = imbalance(service.worst, mode);

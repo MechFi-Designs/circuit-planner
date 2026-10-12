@@ -28,6 +28,8 @@ export interface Load {
   estAmps: number | null;
   kind: LoadKind;
   continuous: boolean;
+  /** On a tandem (twin) breaker sharing one space with another 1-pole circuit. */
+  tandem: boolean;
   /** Starting breaker space, or null for auto placement. */
   slot: number | null;
   /** Locked circuits keep their slot when optimizing. */

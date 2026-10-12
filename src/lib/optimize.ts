@@ -1,7 +1,7 @@
 import type { AppState, Load, Panel, ServiceMode } from '../types';
 import { derive, feederTotals, postOrder } from './derive';
 import { MODE_PHASES, phaseOfSlot, polesOf } from './nec';
-import { Board, layoutPanel, spanOf, type PanelLayout } from './placement';
+import { Board, layoutPanel, spanOf, tandemIds, type PanelLayout } from './placement';
 import { imbalance, maxPhase, phaseTotals, worstAmps, zeroPhases, type PhaseAmps, type PhaseTotals } from './loadCalc';
 
 export interface OptimizeResult {
@@ -54,7 +54,7 @@ export function optimizePanel(
     failed,
   });
 
-  const board = new Board(panel.spaces, panel.maxCircuits);
+  const board = new Board(panel.spaces, panel.maxCircuits, tandemIds(loads));
   const starts = new Map<string, number>();
   const amps = zeroPhases();
 
@@ -89,11 +89,12 @@ export function optimizePanel(
   // Greedy seed.
   for (const l of movable) {
     const poles = polesOf(l.kind);
-    let cands: number[] = [];
-    for (let s = 1; s <= panel.spaces; s++) if (board.canPlace(s, poles)) cands.push(s);
-    if (!cands.length && poles === 1) {
+    const cands: number[] = [];
+    // Tandem circuits fill the open half of a tandem before starting a new one.
+    if (board.wantsTandem(l.id)) {
       for (let s = 1; s <= panel.spaces; s++) if (board.canPlace(s, 1, true)) cands.push(s);
     }
+    if (!cands.length) for (let s = 1; s <= panel.spaces; s++) if (board.canPlace(s, poles)) cands.push(s);
     if (!cands.length) return noChange(true);
     let best = cands[0];
     let bestScore: Score | null = null;
@@ -121,9 +122,11 @@ export function optimizePanel(
       const s0 = starts.get(l.id)!;
       board.remove(l.id, s0, poles);
       add(l, s0, -1);
+      // Tandem circuits move between open tandem halves; others between empty spaces.
+      const twin = board.wantsTandem(l.id);
       let target: number | null = null;
       for (let s = 1; s <= panel.spaces && target == null; s++) {
-        if (s === s0 || !board.canPlace(s, poles)) continue;
+        if (s === s0 || !board.canPlace(s, poles, twin)) continue;
         const trial = { ...amps };
         add(l, s, 1, trial);
         if (better(score(trial, mode), cur)) target = s;
@@ -144,9 +147,10 @@ export function optimizePanel(
         const a = movable[i];
         const b = movable[j];
         const poles = polesOf(a.kind);
-        if (poles !== polesOf(b.kind)) continue;
+        if (poles !== polesOf(b.kind) || board.wantsTandem(a.id) !== board.wantsTandem(b.id)) continue;
         const sa = starts.get(a.id)!;
         const sb = starts.get(b.id)!;
+        if (sa === sb) continue;
         const trial = { ...amps };
         add(a, sa, -1, trial);
         add(b, sb, -1, trial);
@@ -167,19 +171,33 @@ export function optimizePanel(
     if (!moved) break;
   }
 
-  // Compact: slide each circuit to the lowest free start on the same phases.
+  // Compact: slide each breaker (a whole space for tandems, so pairs stay
+  // together) to the lowest free start on the same phases.
   const signature = (start: number, poles: number) =>
     spanOf(start, poles)
       .map((s) => phaseOfSlot(s, mode))
       .sort()
       .join('');
+  const movableIds = new Set(movable.map((l) => l.id));
+  const polesById = new Map(loads.map((l) => [l.id, polesOf(l.kind)]));
   for (let changed = true; changed;) {
     changed = false;
-    for (const l of [...movable].sort((a, b) => starts.get(a.id)! - starts.get(b.id)!)) {
-      const poles = polesOf(l.kind);
-      const s0 = starts.get(l.id)!;
+    const units: string[][] = [];
+    const seenSpaces = new Set<number>();
+    for (const l of movable) {
+      const start = starts.get(l.id)!;
+      if (polesById.get(l.id)! > 1) units.push([l.id]);
+      else if (!seenSpaces.has(start) && board.occupants(start).every((id) => movableIds.has(id))) {
+        seenSpaces.add(start);
+        units.push([...board.occupants(start)]);
+      }
+    }
+    const ordered = units.sort((a, b) => starts.get(a[0])! - starts.get(b[0])!);
+    for (const ids of ordered) {
+      const poles = polesById.get(ids[0])!;
+      const s0 = starts.get(ids[0])!;
       const sig = signature(s0, poles);
-      board.remove(l.id, s0, poles);
+      for (const id of ids) board.remove(id, s0, poles);
       let dest = s0;
       for (let s = 1; s < s0; s++) {
         if (board.canPlace(s, poles) && signature(s, poles) === sig) {
@@ -187,8 +205,10 @@ export function optimizePanel(
           break;
         }
       }
-      board.place(l.id, dest, poles);
-      starts.set(l.id, dest);
+      for (const id of ids) {
+        board.place(id, dest, poles);
+        starts.set(id, dest);
+      }
       if (dest !== s0) changed = true;
     }
   }

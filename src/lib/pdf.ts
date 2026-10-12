@@ -169,10 +169,12 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
       if (multi && first.slot !== space) continue; // drawn with its first pole
 
       const span = multi ? first.slots.length : 1;
+      // Tandem spaces always show both halves, leaving a spare one blank.
+      const tandem = !multi && !!first?.tandem;
       const h = rowH * span;
       doc.setDrawColor(GRID);
       // Circuit numbers: one cell per pole so every space is labeled.
-      if (occ.length > 1) {
+      if (tandem) {
         // Tandem: number each half (e.g. 11A / 11B) next to its description.
         for (const [i, tag] of ['A', 'B'].entries()) {
           doc.rect(side.ckt, y + (i * rowH) / 2, COL.ckt, rowH / 2);
@@ -192,7 +194,7 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
       doc.rect(side.brkr, y, COL.brkr, h);
       if (!occ.length) continue;
 
-      if (occ.length === 1) {
+      if (!tandem) {
         const l = loads.get(occ[0])!;
         const isFeeder = d.feederOf.has(l.id);
         fitText(doc, describe(l), side.desc, y, DESC_W, h, { size: font + 0.5, bold: isFeeder, align: 'left' });
@@ -207,15 +209,15 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
         }
       } else {
         // Tandem: two half-height circuits in one space.
-        occ.forEach((id, i) => {
+        doc.setDrawColor(200);
+        doc.line(side.desc, y + rowH / 2, side.desc + DESC_W, y + rowH / 2);
+        // Breaker and wire columns sit in mirrored order on each side.
+        const x0 = Math.min(side.wire, side.brkr);
+        doc.line(x0, y + rowH / 2, x0 + COL.wire + COL.brkr, y + rowH / 2);
+        occ.forEach((id) => {
           const l = loads.get(id)!;
-          const hy = y + (i * rowH) / 2;
           const hh = rowH / 2;
-          if (i) {
-            doc.setDrawColor(200);
-            doc.line(side.desc, hy, side.desc + DESC_W, hy);
-            doc.line(side.wire, hy, side.brkr + COL.brkr, hy);
-          }
+          const hy = layout.placements.get(id)!.half === 'B' ? y + hh : y;
           fitText(doc, describe(l), side.desc, hy, DESC_W, hh, { size: font - 0.5, align: 'left' });
           fitText(doc, breakerText(l, 1), side.brkr, hy, COL.brkr, hh, { size: font - 0.5, bold: true });
           fitText(doc, wireText(l), side.wire, hy, COL.wire, hh, { size: font - 0.5 });

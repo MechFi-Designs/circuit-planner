@@ -7,7 +7,12 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 ## Features
 
 - **Service mode toggle:** split phase 120/240 V or commercial 3-phase 208Y/120 V.
-- **Panels:** set each panel's main breaker, number of spaces and max circuits. The default is 20 spaces / 40 circuits, and any circuits beyond the space count go in as tandem breakers.
+- **Panels:** set each panel's main breaker, number of spaces and max circuits. The default is 20 spaces / 40 circuits; a panel with more circuits than spaces takes tandem breakers.
+- **Tandem breakers:** check **Tandem** on any 1-pole circuit.
+  - Tandem circuits pair up two to a space (labeled 7A / 7B) and share that space's phase.
+  - A tandem circuit without a partner shows a spare half.
+  - Circuits that aren't marked tandem never double up. If a panel runs out of spaces, the warning suggests which circuits to mark.
+  - ⚖ Optimize picks the pairings and positions for balance and keeps pairs together.
 - **Subpanels:** set where each panel is **fed from**: the service or another panel.
   - A subpanel gets a feeder breaker in its parent, which takes up spaces there, has its wire sized, and shows on the panel picture.
   - The subpanel's load counts toward its parent's totals, and every load counts exactly once against the service.

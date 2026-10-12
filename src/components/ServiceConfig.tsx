@@ -40,7 +40,9 @@ export function ServiceConfig({ state, dispatch }: Props) {
                 Rating A
               </th>
               <th>Spaces</th>
-              <th title="More circuits than spaces allows tandem breakers">Circuits</th>
+              <th title="Max circuits the panel is rated for. More circuits than spaces means it takes tandem breakers (e.g. 20 spaces / 40 circuits).">
+                Circuits
+              </th>
               <th aria-label="Remove" />
             </tr>
           </thead>

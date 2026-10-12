@@ -13,6 +13,7 @@ const load = (kind: LoadKind, amps: number, extra: Partial<Load> = {}): Load => 
   amps,
   kind,
   continuous: false,
+  tandem: false,
   slot: null,
   estAmps: null,
   locked: false,
@@ -76,6 +77,18 @@ describe('optimizePanel', () => {
     const loads = [20, 20, 15, 15, 10, 10].map((a) => load('120-1p', a));
     const { applied } = run(loads, 'three');
     expect(run(applied, 'three').res.changed).toBe(false);
+  });
+
+  it('keeps tandem circuits paired and balances the pairs', () => {
+    const twins = [20, 20, 12, 12, 8, 8].map((a) => load('120-1p', a, { tandem: true }));
+    const regular = [load('120-1p', 16), load('120-1p', 16)];
+    const { applied, after } = run([...twins, ...regular], 'split');
+    const lay = layoutPanel(panel, applied, 'split');
+    const spaceOf = (l: Load) => lay.placements.get(l.id)!.slot;
+    // 6 tandem circuits share 3 spaces; regular circuits never share.
+    expect(new Set(twins.map(spaceOf)).size).toBe(3);
+    for (const r of regular) expect(lay.spaceMap.get(spaceOf(r))).toHaveLength(1);
+    expect(after.A).toBe(after.B);
   });
 
   it('weights continuous loads at 125%', () => {

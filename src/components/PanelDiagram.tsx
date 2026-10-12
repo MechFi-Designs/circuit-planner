@@ -88,13 +88,11 @@ export function PanelDiagram({ panel, state, derived, selectedId, onSelect }: Pr
           </div>,
         );
       } else {
+        const tandem = placement.tandem;
         cells.push(
-          <div
-            key={`b${space}`}
-            className={`slot${occ.length > 1 ? ' tandem' : ''}`}
-            style={{ gridRow: row, gridColumn: col }}
-          >
-            {occ.map((id) => breaker(id, occ.length > 1))}
+          <div key={`b${space}`} className={`slot${tandem ? ' tandem' : ''}`} style={{ gridRow: row, gridColumn: col }}>
+            {occ.map((id) => breaker(id, tandem))}
+            {tandem && occ.length === 1 && <div className="half-empty" title="Spare half of a tandem breaker" />}
           </div>,
         );
       }

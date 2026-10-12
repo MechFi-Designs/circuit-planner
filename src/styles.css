@@ -731,6 +731,12 @@ td.center {
   font-weight: 600;
 }
 
+.half-empty {
+  flex: 1;
+  border: 1px dashed var(--breaker-border);
+  border-radius: 5px;
+}
+
 .breaker.half {
   font-size: 10.5px;
   padding: 0 6px;

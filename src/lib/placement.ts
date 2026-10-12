@@ -8,8 +8,10 @@ export interface Placement {
   /** All spaces the breaker occupies (same side, consecutive rows). */
   slots: number[];
   phases: Phase[];
-  /** True when sharing a space with another 1-pole circuit. */
+  /** On a tandem breaker (half of a space). */
   tandem: boolean;
+  /** Which half of the tandem space: A (first) or B. */
+  half?: 'A' | 'B';
 }
 
 export interface PanelLayout {
@@ -28,6 +30,11 @@ export function spanOf(start: number, poles: number): number[] {
   return Array.from({ length: poles }, (_, i) => start + 2 * i);
 }
 
+/** Ids of 1-pole loads marked as tandem. */
+export function tandemIds(loads: Load[]): Set<string> {
+  return new Set(loads.filter((l) => l.tandem && polesOf(l.kind) === 1).map((l) => l.id));
+}
+
 /** Mutable occupancy grid for one panel, shared by placement and the optimizer. */
 export class Board {
   /** Per space: a multi-pole/full-size owner, or up to two 1-pole occupants. */
@@ -38,23 +45,35 @@ export class Board {
   constructor(
     readonly spaces: number,
     readonly maxCircuits: number,
+    /** Loads marked tandem; only these may share a space. */
+    private readonly tandems: Set<string> = new Set(),
   ) {}
 
   isEmpty(space: number): boolean {
     return !this.multi.has(space) && !this.singles.get(space)?.length;
   }
 
+  /** Panels with more circuits than spaces accept tandem breakers. */
   get tandemAllowed(): boolean {
     return this.maxCircuits > this.spaces;
   }
 
-  /** Can a breaker with `poles` start at `start`? `tandem` allows doubling up a 1-pole space. */
+  /** Is this load placed as a tandem half (marked tandem, in a panel that takes them)? */
+  wantsTandem(id: string): boolean {
+    return this.tandemAllowed && this.tandems.has(id);
+  }
+
+  /**
+   * Can a breaker with `poles` start at `start`? With `tandem`, a 1-pole
+   * tandem circuit may join a space holding exactly one other tandem circuit.
+   */
   canPlace(start: number, poles: number, tandem = false): boolean {
     if (start < 1 || this.circuits + poles > this.maxCircuits) return false;
     const span = spanOf(start, poles);
     if (span[span.length - 1] > this.spaces) return false;
     if (poles === 1 && tandem) {
-      return this.tandemAllowed && !this.multi.has(start) && (this.singles.get(start)?.length ?? 0) === 1;
+      const occ = this.singles.get(start) ?? [];
+      return this.tandemAllowed && !this.multi.has(start) && occ.length === 1 && this.tandems.has(occ[0]);
     }
     return span.every((s) => this.isEmpty(s));
   }
@@ -84,20 +103,18 @@ export class Board {
     return m ? [m] : (this.singles.get(space) ?? []);
   }
 
-  isTandem(space: number): boolean {
-    return (this.singles.get(space)?.length ?? 0) > 1;
-  }
-
-  /** First start position that fits full-size, then (for 1-pole) as a tandem. */
-  firstFit(poles: number): number | null {
+  /** First fit: tandem circuits complete an open tandem before taking an empty space. */
+  firstFit(id: string, poles: number): number | null {
+    if (poles === 1 && this.wantsTandem(id)) {
+      for (let s = 1; s <= this.spaces; s++) if (this.canPlace(s, 1, true)) return s;
+    }
     for (let s = 1; s <= this.spaces; s++) if (this.canPlace(s, poles)) return s;
-    if (poles === 1) for (let s = 1; s <= this.spaces; s++) if (this.canPlace(s, 1, true)) return s;
     return null;
   }
 
-  /** Place at a requested start: full-size if empty, tandem if half-occupied. */
+  /** Place at a requested start: an empty space, or the open half of a tandem. */
   tryPlaceAt(id: string, start: number, poles: number): boolean {
-    if (this.canPlace(start, poles) || (poles === 1 && this.canPlace(start, 1, true))) {
+    if (this.canPlace(start, poles) || (poles === 1 && this.wantsTandem(id) && this.canPlace(start, 1, true))) {
       this.place(id, start, poles);
       return true;
     }
@@ -111,7 +128,7 @@ export class Board {
  * in table order taking the first space that fits.
  */
 export function layoutPanel(panel: Panel, loads: Load[], mode: ServiceMode): PanelLayout {
-  const board = new Board(panel.spaces, panel.maxCircuits);
+  const board = new Board(panel.spaces, panel.maxCircuits, tandemIds(loads));
   const starts = new Map<string, number>();
   const unplaced: string[] = [];
   const conflicts: string[] = [];
@@ -134,7 +151,7 @@ export function layoutPanel(panel: Panel, loads: Load[], mode: ServiceMode): Pan
   for (const l of loads) {
     if (!autoSet.has(l.id)) continue;
     const poles = polesOf(l.kind);
-    const s = board.firstFit(poles);
+    const s = board.firstFit(l.id, poles);
     if (s == null) unplaced.push(l.id);
     else {
       board.place(l.id, s, poles);
@@ -165,7 +182,13 @@ export function buildLayout(
       slot: start,
       slots,
       phases: slots.map((s) => phaseOfSlot(s, mode)).sort(),
-      tandem: polesOf(l.kind) === 1 && board.isTandem(start),
+      tandem: polesOf(l.kind) === 1 && board.wantsTandem(l.id),
+      half:
+        polesOf(l.kind) === 1 && board.wantsTandem(l.id)
+          ? board.occupants(start).indexOf(l.id)
+            ? 'B'
+            : 'A'
+          : undefined,
     });
   }
   const spaceMap = new Map<number, string[]>();
