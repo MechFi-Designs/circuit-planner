@@ -40,7 +40,8 @@ export function overloadAdvice(state: AppState, d: Derived, preview: Derived | n
       : `has a ${fmtA(max)} A max load`;
 
   const svc = maxPhase(d.service.design, mode);
-  if (state.serviceA > 0 && svc > state.serviceA) {
+  const serviceOver = state.serviceA > 0 && svc > state.serviceA;
+  if (serviceOver) {
     out.push(
       `The service ${describe(maxPhase(d.service.max, mode), svc)}, ${fmtA(svc - state.serviceA)} A more than its ${state.serviceA} A rating. Moving circuits around can't fix that: the service has to be bigger or the load smaller.`,
     );
@@ -63,7 +64,9 @@ export function overloadAdvice(state: AppState, d: Derived, preview: Derived | n
       const childAmps = children.reduce((s, c) => s + peak(d, c.id), 0);
       const names = list(children.map((c) => c.name));
       const them = children.length > 1 ? 'them' : 'it';
-      if (children.length && childAmps > 0) {
+      if (serviceOver) {
+        // Re-feeding subpanels from the service can't help when the service itself is the limit.
+      } else if (children.length && childAmps > 0) {
         parts.push(
           `${names} ${children.length > 1 ? 'are' : 'is'} fed through it (${fmtA(childAmps)} A). Feeding ${them} from the service instead would take that load off ${p.name}.`,
         );

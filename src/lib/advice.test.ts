@@ -81,6 +81,17 @@ describe('keeping panels under their rating', () => {
     expect(adviceFor(s)).toMatch(/B is fed through it \(60 A\)\. Feeding it from the service/);
   });
 
+  it("doesn't suggest re-feeding from the service when the service is the limit", () => {
+    // 200 A service = 200 A main, with a 70 A subpanel fed from it; total load is over 200 A.
+    const s = {
+      ...design([panel('a', 'A'), panel('b', 'B', { fedFrom: 'a', mainA: 70 })], [...heavy(), load('b', '240-2p', 30)]),
+      serviceA: 200,
+    };
+    const text = adviceFor(s);
+    expect(text).toMatch(/The service has a [\d.]+ A max load/);
+    expect(text).not.toMatch(/from the service instead/);
+  });
+
   it('advice suggests re-feeding an empty subpanel from the service', () => {
     const s = design([panel('a', 'A'), panel('b', 'B', { fedFrom: 'a', mainA: 100 })], heavy());
     expect(adviceFor(s)).toMatch(/Moving circuits into B wouldn't help.*Feed it from the service/);
