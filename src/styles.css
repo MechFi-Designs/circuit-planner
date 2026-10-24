@@ -1008,3 +1008,61 @@ td.center {
   background: var(--text);
   opacity: 0.55;
 }
+
+/* ---------- breaker override / equipment ---------- */
+.breaker-select {
+  width: 84px;
+  font-weight: 600;
+}
+
+.breaker-select.override {
+  border-color: var(--accent) !important;
+}
+
+.issue {
+  color: var(--warn);
+  cursor: help;
+}
+
+.equip {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.equip-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: end;
+}
+
+.equip-fields label {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.equip-fields label > span {
+  color: var(--muted);
+}
+
+.equip-notes {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.warn-text {
+  color: var(--warn);
+  list-style: none;
+  margin-left: -18px;
+}
+
+.equip .breaker-select {
+  width: 120px;
+}

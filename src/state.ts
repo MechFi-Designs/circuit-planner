@@ -30,6 +30,12 @@ export function newLoad(panelId: string, mode: ServiceMode, patch: Partial<Load>
     continuous: false,
     tandem: false,
     devices: [],
+    equip: 'general',
+    hp: null,
+    motorStart: 'dol',
+    mca: null,
+    mocp: null,
+    breakerA: null,
     slot: null,
     locked: false,
     ...patch,
@@ -204,6 +210,9 @@ function sanitizeDevices(raw: unknown): Device[] {
     }));
 }
 
+/** Optional positive number from untrusted input, else null. */
+const optNum = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 /** Validate untrusted JSON (storage or share link) into a well-formed state. */
@@ -235,6 +244,12 @@ export function sanitize(raw: unknown): AppState | null {
         continuous: l.continuous === true,
         tandem: l.tandem === true,
         devices: sanitizeDevices(l.devices),
+        equip: l.equip === 'motor' || l.equip === 'hvac' ? l.equip : 'general',
+        hp: optNum(l.hp),
+        motorStart: l.motorStart === 'vfd' ? 'vfd' : 'dol',
+        mca: optNum(l.mca),
+        mocp: optNum(l.mocp),
+        breakerA: optNum(l.breakerA),
         slot: typeof l.slot === 'number' && l.slot >= 1 ? Math.round(l.slot) : null,
         locked: l.locked === true,
         ...(typeof l.feeds === 'string' ? { feeds: l.feeds } : {}),

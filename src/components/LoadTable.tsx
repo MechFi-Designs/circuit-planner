@@ -1,9 +1,9 @@
 import { useEffect, type Dispatch } from 'react';
-import type { AppState, Load, LoadKind, Panel } from '../types';
+import type { AppState, EquipType, Load, LoadKind, Panel } from '../types';
 import type { Action } from '../state';
 import type { Derived } from '../lib/derive';
 import { circuitAmps, maxPhase } from '../lib/loadCalc';
-import { formatWire, KINDS, KINDS_BY_MODE, type WireResult } from '../lib/nec';
+import { BREAKER_SIZES, formatWire, KINDS, KINDS_BY_MODE, type WireResult } from '../lib/nec';
 import { fmtA, fmtKw } from '../lib/sizing';
 import { NumInput } from './NumInput';
 import { PhaseChip } from './PhaseChip';
@@ -135,6 +135,9 @@ function PanelLoads({
               <th>Max A</th>
               <th title="Power at max current">kW</th>
               <th>Circuit</th>
+              <th title="General circuit, motor (NEC 430) or HVAC equipment (NEC 440). Set horsepower or MCA/MOCP in Circuit details.">
+                Type
+              </th>
               <th title="Continuous load (3 h or more): sized at 125%">Cont.</th>
               <th title="Tandem (twin) breaker: two 1-pole circuits share one space">Tandem</th>
               <th title="Estimated typical running current. Blank = same as max.">Est. A</th>
@@ -154,7 +157,8 @@ function PanelLoads({
             {loads.map((l) => {
               const s = derived.sizing.get(l.id)!;
               const amps = circuitAmps(l);
-              const nDev = l.devices.length;
+              const nDev = l.equip === 'general' ? l.devices.length : 0;
+              const equipped = l.equip !== 'general';
               const devTitle = `Sum of ${nDev} device${nDev > 1 ? 's' : ''}; edit in the Devices tab`;
               const sub = derived.feederOf.get(l.id);
               const subEst = sub ? maxPhase(derived.totals.get(sub.id)!.est, state.mode) : 0;
@@ -262,13 +266,50 @@ function PanelLoads({
                       </select>
                     )}
                   </td>
+                  <td>
+                    {!sub && (
+                      <span className="name-wrap">
+                        <select
+                          value={l.equip}
+                          aria-label="Equipment type"
+                          onChange={(e) => update(l.id, { equip: e.target.value as EquipType })}
+                        >
+                          <option value="general">General</option>
+                          <option value="motor">Motor</option>
+                          <option value="hvac">HVAC</option>
+                        </select>
+                        {equipped && (
+                          <button
+                            className="dev-btn has"
+                            title={
+                              l.equip === 'motor'
+                                ? `${l.hp ? `${l.hp} hp` : 'Set hp'} · ${l.motorStart === 'dol' ? 'magnetic start' : 'drive'}; edit in Circuit details`
+                                : `MCA ${l.mca ?? '?'} A · MOCP ${l.mocp ?? '?'} A; edit in Circuit details`
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenDevices(l.id);
+                            }}
+                          >
+                            {l.equip === 'motor' ? (l.hp ? `${l.hp} hp` : 'hp?') : l.mca ? `${l.mca} MCA` : 'MCA?'}
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </td>
                   <td className="center">
                     {!sub && (
                       <input
                         type="checkbox"
                         checked={amps.continuous}
-                        disabled={nDev > 0}
-                        title={nDev ? 'Set per device in the Devices tab' : undefined}
+                        disabled={nDev > 0 || equipped}
+                        title={
+                          equipped
+                            ? 'Motor and HVAC rules already include their own 125% factor'
+                            : nDev
+                              ? 'Set per device in Circuit details'
+                              : undefined
+                        }
                         aria-label="Continuous"
                         onChange={(e) => update(l.id, { continuous: e.target.checked })}
                       />
@@ -315,13 +356,57 @@ function PanelLoads({
                       />
                     )}
                   </td>
-                  <td className="num">{s.breaker ? fmtA(s.required) : '—'}</td>
                   <td
-                    className={`num strong${feederOver ? ' over' : ''}`}
-                    title={feederOver ? `${sub!.name} load exceeds its feeder breaker` : undefined}
+                    className="num"
+                    title={
+                      l.equip === 'motor'
+                        ? `125% of ${fmtA(s.flc ?? 0)} A ${s.flcFromTable ? 'code full-load current (NEC 430.22)' : 'motor current'}`
+                        : l.equip === 'hvac'
+                          ? 'Nameplate minimum circuit ampacity (NEC 440.33)'
+                          : undefined
+                    }
                   >
-                    {s.breaker ? `${s.breaker} A ${poles}P` : '—'}
+                    {s.required > 0 ? fmtA(s.required) : '—'}
                   </td>
+                  {sub ? (
+                    <td
+                      className={`num strong${feederOver ? ' over' : ''}`}
+                      title={feederOver ? `${sub.name} load exceeds its feeder breaker` : undefined}
+                    >
+                      {s.breaker ? `${s.breaker} A ${poles}P` : '—'}
+                    </td>
+                  ) : (
+                    <td className="num strong">
+                      <span className="name-wrap">
+                        <select
+                          className={`breaker-select${l.breakerA != null ? ' override' : ''}`}
+                          value={l.breakerA ?? ''}
+                          aria-label="Breaker"
+                          title={
+                            s.maxAllowed
+                              ? `Auto picks ${s.auto ?? '—'} A; allowed up to ${s.maxAllowed} A`
+                              : 'Auto picks the smallest standard breaker that fits; choose a size to match what is installed'
+                          }
+                          onChange={(e) =>
+                            update(l.id, { breakerA: e.target.value === '' ? null : Number(e.target.value) })
+                          }
+                        >
+                          <option value="">{s.auto ? `Auto · ${s.auto}` : 'Auto'}</option>
+                          {BREAKER_SIZES.map((b) => (
+                            <option key={b} value={b}>
+                              {b}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="muted">A {poles}P</span>
+                        {s.issues.length > 0 && (
+                          <span className="issue" title={s.issues.join('\n')}>
+                            ⚠
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                  )}
                   <td className="num" title={wireTitle(s.cu, s.breaker)}>
                     {formatWire(s.cu)}
                   </td>

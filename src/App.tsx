@@ -196,7 +196,7 @@ export default function App() {
         {(
           [
             ['panels', 'Panels & loads'],
-            ['devices', 'Devices'],
+            ['devices', 'Circuit details'],
           ] as const
         ).map(([id, label]) => (
           <button

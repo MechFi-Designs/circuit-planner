@@ -2,6 +2,12 @@ export type ServiceMode = 'split' | 'three';
 
 export type BalanceBasis = 'max' | 'est';
 
+/** General branch circuit, a motor (NEC 430), or HVAC equipment (NEC 440). */
+export type EquipType = 'general' | 'motor' | 'hvac';
+
+/** How a motor starts: across-the-line magnetic starter, or a drive / soft starter. */
+export type MotorStart = 'dol' | 'vfd';
+
 export type Phase = 'A' | 'B' | 'C';
 
 /** Circuit voltage / pole configuration. */
@@ -51,8 +57,19 @@ export interface Load {
   slot: number | null;
   /** Locked circuits keep their slot when optimizing. */
   locked: boolean;
-  /** Devices on this circuit. When present they replace amps/estAmps/continuous. */
+  /** Devices on this circuit (general circuits only). When present they replace amps/estAmps/continuous. */
   devices: Device[];
+  /** Equipment type; motor and HVAC circuits are sized by their own NEC articles. */
+  equip: EquipType;
+  /** Motor horsepower, for the NEC full-load current tables. */
+  hp: number | null;
+  motorStart: MotorStart;
+  /** HVAC nameplate minimum circuit ampacity. */
+  mca: number | null;
+  /** HVAC nameplate maximum overcurrent protection. */
+  mocp: number | null;
+  /** Installed / specified breaker, overriding the automatic choice. */
+  breakerA: number | null;
   /** Set on the feeder breaker that supplies a subpanel (its id). */
   feeds?: string;
 }

@@ -26,6 +26,13 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
   - The breaker is sized for 125% of the continuous devices plus 100% of the rest.
   - Watts convert at the circuit's voltage, using √3·V for 3-phase.
   - The 🔌 button on each load-table row jumps to that circuit's devices.
+- **Equipment types:** set a circuit's **Type** to General, Motor or HVAC.
+  - **Motor (NEC 430):** enter the nameplate amps, horsepower and how it starts.
+    - Magnetic-start motors size from the code full-load current (Tables 430.248 / 430.250): wire at 125% (430.22), breaker up to 250% (430.52). Auto picks about 175% to leave room for starting current.
+    - Drive / soft-start motors size from the drive's input current at 125% (430.122).
+    - Panels and the service add 25% of the largest motor (430.24).
+  - **HVAC (NEC 440):** enter the nameplate MCA and MOCP. Wire is sized to the MCA, and the breaker can't go above the MOCP.
+- **Breaker override:** the Breaker column is a dropdown. Leave it on Auto, or pick the breaker that's installed or specified. Warnings flag a breaker below the load, above a motor's 430.52 maximum or an HVAC unit's MOCP, or below its MCA.
 - **Automatic sizing:** for each circuit, the breaker, the copper THHN wire, the copper equipment ground (EGC), and its kW.
 - **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows.
 - **⚖ Optimize:** moves unlocked circuits between slots to even out the worst-case current on each phase. Locked circuits (🔒) stay where they are.

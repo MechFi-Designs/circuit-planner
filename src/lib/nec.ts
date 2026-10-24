@@ -124,6 +124,74 @@ export function requiredAmpacity(amps: number, continuous: boolean): number {
   return amps * (continuous ? CONTINUOUS_FACTOR : 1);
 }
 
+/** Largest standard breaker ≤ amps (for "round down" limits like MOCP). */
+export function breakerAtMost(amps: number): number | null {
+  const fits = BREAKER_SIZES.filter((b) => b <= amps);
+  return fits.length ? fits[fits.length - 1] : null;
+}
+
+/**
+ * NEC 2023 Table 430.248: full-load current (A) of single-phase AC motors.
+ * Columns: 115 V, 200 V, 208 V, 230 V.
+ */
+const FLC_1PH: [number, number, number, number, number][] = [
+  [1 / 6, 4.4, 2.5, 2.4, 2.2],
+  [1 / 4, 5.8, 3.3, 3.2, 2.9],
+  [1 / 3, 7.2, 4.1, 4.0, 3.6],
+  [1 / 2, 9.8, 5.6, 5.4, 4.9],
+  [3 / 4, 13.8, 7.9, 7.6, 6.9],
+  [1, 16, 9.2, 8.8, 8.0],
+  [1.5, 20, 11.5, 11.0, 10],
+  [2, 24, 13.8, 13.2, 12],
+  [3, 34, 19.6, 18.7, 17],
+  [5, 56, 32.2, 30.8, 28],
+  [7.5, 80, 46.0, 44.0, 40],
+  [10, 100, 57.5, 55.0, 50],
+];
+
+/**
+ * NEC 2023 Table 430.250: full-load current (A) of three-phase induction motors.
+ * Columns: 200 V, 208 V, 230 V, 460 V.
+ */
+const FLC_3PH: [number, number, number, number, number][] = [
+  [1 / 2, 2.5, 2.4, 2.2, 1.1],
+  [3 / 4, 3.7, 3.5, 3.2, 1.6],
+  [1, 4.8, 4.6, 4.2, 2.1],
+  [1.5, 6.9, 6.6, 6.0, 3.0],
+  [2, 7.8, 7.5, 6.8, 3.4],
+  [3, 11.0, 10.6, 9.6, 4.8],
+  [5, 17.5, 16.7, 15.2, 7.6],
+  [7.5, 25.3, 24.2, 22, 11],
+  [10, 32.2, 30.8, 28, 14],
+  [15, 48.3, 46.2, 42, 21],
+  [20, 62.1, 59.4, 54, 27],
+  [25, 78.2, 74.8, 68, 34],
+  [30, 92, 88, 80, 40],
+  [40, 120, 114, 104, 52],
+  [50, 150, 143, 130, 65],
+  [60, 177, 169, 154, 77],
+  [75, 221, 211, 192, 96],
+  [100, 285, 273, 248, 124],
+];
+
+/**
+ * Code full-load current for a motor of `hp` on this circuit type (NEC 430.6:
+ * use the tables, not the nameplate, to size conductors and protection).
+ * Uses the next listed size up when hp falls between rows; null if off the table.
+ */
+export function motorFlc(kind: LoadKind, hp: number | null): number | null {
+  if (!(hp && hp > 0)) return null;
+  const k = KINDS[kind];
+  const table = k.poles === 3 ? FLC_3PH : FLC_1PH;
+  const row = table.find((r) => r[0] >= hp - 1e-9);
+  if (!row) return null;
+  if (k.poles === 3) return row[2]; // 208 V
+  return k.volts === 120 ? row[1] : k.volts === 208 ? row[3] : row[4]; // 115 / 208 / 230 V
+}
+
+/** NEC 430.52 / Table 430.52(C)(1): inverse-time breaker max for motor branch circuits, % of FLC. */
+export const MOTOR_BREAKER_MAX_PCT = 2.5;
+
 /** Smallest standard breaker ≥ required ampacity, or null if none / no load. */
 export function sizeBreaker(required: number): number | null {
   if (!(required > 0)) return null;
@@ -143,19 +211,24 @@ export interface WireResult {
  * ampacity (NEC 110.14(C)) must be ≥ the breaker rating and the 240.4(D)
  * small-conductor limits must be met. Falls back to parallel sets.
  */
-export function sizeWire(breakerA: number, material: Material): WireResult | null {
+/**
+ * Smallest conductor with 75 °C ampacity ≥ `amps`. By default the 240.4(D)
+ * small-conductor limits apply (general circuits sized to their breaker);
+ * motor and HVAC circuits are exempt (240.4(G)) and size to their own ampacity.
+ */
+export function sizeWire(amps: number, material: Material, smallConductorLimits = true): WireResult | null {
   const table = material === 'cu' ? CU_TABLE : AL_TABLE;
-  const limits = SMALL_CONDUCTOR_LIMIT[material];
+  const limits = smallConductorLimits ? SMALL_CONDUCTOR_LIMIT[material] : {};
   for (const row of table) {
     const limit = limits[row.size];
-    if (row.a75 >= breakerA && (limit === undefined || limit >= breakerA)) {
+    if (row.a75 >= amps && (limit === undefined || limit >= amps)) {
       return { size: row.size, sets: 1, a75: row.a75, a90: row.a90 };
     }
   }
   for (let sets = 2; sets <= 8; sets++) {
     for (let i = MIN_PARALLEL_INDEX[material]; i < table.length; i++) {
       const row = table[i];
-      if (row.a75 * sets >= breakerA) return { size: row.size, sets, a75: row.a75, a90: row.a90 };
+      if (row.a75 * sets >= amps) return { size: row.size, sets, a75: row.a75, a90: row.a90 };
     }
   }
   return null;

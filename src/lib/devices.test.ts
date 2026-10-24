@@ -16,6 +16,12 @@ const circuit = (kind: LoadKind, devices: Partial<Device>[], extra: Partial<Load
   slot: null,
   locked: false,
   devices: devices.map((d) => newDevice(d)),
+  equip: 'general',
+  hp: null,
+  motorStart: 'dol',
+  mca: null,
+  mocp: null,
+  breakerA: null,
   ...extra,
 });
 

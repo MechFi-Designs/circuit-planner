@@ -47,6 +47,10 @@ export function SummaryBar({ state, derived, advice }: Props) {
     }
     if (lay.conflicts.length) warnings.push(`${p.name}: ${lay.conflicts.length} locked slot conflict(s).`);
   }
+  for (const l of state.loads) {
+    for (const issue of derived.sizing.get(l.id)?.issues ?? [])
+      warnings.push(`${l.name || 'Unnamed circuit'}: ${issue}`);
+  }
   const basis = state.balanceOn;
   const imb = imbalance(service[basis], mode);
   const peak = maxPhase(service[basis], mode);

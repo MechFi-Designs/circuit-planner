@@ -1,5 +1,5 @@
 import type { Load, LoadKind, Phase, ServiceMode } from '../types';
-import { CONTINUOUS_FACTOR, KINDS, MODE_PHASES } from './nec';
+import { CONTINUOUS_FACTOR, KINDS, MODE_PHASES, motorFlc } from './nec';
 import type { Placement } from './placement';
 
 export type PhaseAmps = Record<Phase, number>;
@@ -40,8 +40,38 @@ export function deviceAmps(kind: LoadKind, value: number, unit: 'W' | 'A', qty: 
 /** Effective volts for converting watts to line current (√3·V for 3-phase). */
 const volts = (kind: LoadKind) => KINDS[kind].volts * (KINDS[kind].poles === 3 ? Math.sqrt(3) : 1);
 
-/** A circuit's currents, from its devices if it has any, otherwise from its own fields. */
+/**
+ * Current used to size a motor circuit: the code full-load current from the
+ * NEC tables for an across-the-line motor with hp entered (430.6), otherwise
+ * the nameplate / drive input current. Null for non-motor circuits.
+ */
+export function motorFlcOf(load: Load): number | null {
+  if (load.equip !== 'motor') return null;
+  const table = load.motorStart === 'dol' ? motorFlc(load.kind, load.hp) : null;
+  return table ?? load.amps;
+}
+
+/** HVAC minimum circuit ampacity: the nameplate MCA, else an estimate of 125% of the max current. */
+export function hvacMcaOf(load: Load): number | null {
+  if (load.equip !== 'hvac') return null;
+  return load.mca ?? load.amps * CONTINUOUS_FACTOR;
+}
+
+/**
+ * A circuit's currents. Motor and HVAC circuits use their nameplate current as
+ * the real load and their code sizing current (motor FLC / HVAC MCA) as the
+ * design load; general circuits use their devices if they have any, otherwise
+ * their own fields.
+ */
 export function circuitAmps(load: Load): CircuitAmps {
+  if (load.equip === 'motor' || load.equip === 'hvac') {
+    return {
+      max: load.amps,
+      design: (load.equip === 'motor' ? motorFlcOf(load) : hvacMcaOf(load)) ?? load.amps,
+      est: load.estAmps ?? load.amps,
+      continuous: false,
+    };
+  }
   if (!load.devices?.length) {
     return {
       max: load.amps,
