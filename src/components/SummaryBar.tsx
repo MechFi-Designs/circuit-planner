@@ -47,9 +47,12 @@ export function SummaryBar({ state, derived, advice }: Props) {
     }
     if (lay.conflicts.length) warnings.push(`${p.name}: ${lay.conflicts.length} locked slot conflict(s).`);
   }
-  const imb = imbalance(service.max, mode);
-  const peak = maxPhase(service.max, mode);
-  if (peak > 0 && imb / peak > 0.2) warnings.push(`Phases are ${fmtA(imb)} A apart. Try ⚖ Optimize.`);
+  const basis = state.balanceOn;
+  const imb = imbalance(service[basis], mode);
+  const peak = maxPhase(service[basis], mode);
+  if (peak > 0 && imb / peak > 0.2) {
+    warnings.push(`Phases are ${fmtA(imb)} A apart (${basis === 'est' ? 'estimated' : 'max'} load). Try ⚖ Optimize.`);
+  }
 
   return (
     <section className="summary card">

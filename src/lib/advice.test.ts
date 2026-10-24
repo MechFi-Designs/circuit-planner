@@ -38,7 +38,7 @@ const heavy = () => [
 ];
 
 const design = (panels: Panel[], loads: Load[]): AppState =>
-  syncFeeders({ mode: 'split', serviceA: 400, optimizeAcrossPanels: true, panels, loads });
+  syncFeeders({ mode: 'split', serviceA: 400, optimizeAcrossPanels: true, balanceOn: 'max', panels, loads });
 
 const util = (s: AppState, id: string) => {
   const d = derive(s);

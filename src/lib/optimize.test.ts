@@ -92,6 +92,25 @@ describe('optimizePanel', () => {
     expect(after.A).toBe(after.B);
   });
 
+  it('can balance on estimated load instead of max load', () => {
+    // A CNC-style load: big nameplate, small typical draw.
+    const mill = load('120-1p', 20, { estAmps: 2 });
+    const loads = [mill, load('120-1p', 10), load('120-1p', 10)];
+    const lay = layoutPanel(panel, loads, 'split');
+    const settle = (basis: 'max' | 'est') => {
+      const res = optimizePanel(panel, loads, 'split', lay, new Map(), basis);
+      const applied = loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l));
+      return phaseTotals(applied, layoutPanel(panel, applied, 'split').placements);
+    };
+    // Max: mill alone vs the two 10 A loads → 20 / 20 max, but 2 / 20 estimated.
+    const byMax = settle('max');
+    expect(Math.max(byMax.max.A, byMax.max.B)).toBe(20);
+    expect(Math.max(byMax.est.A, byMax.est.B)).toBe(20);
+    // Estimated: mill shares a leg with one 10 A load → 12 / 10 estimated.
+    const byEst = settle('est');
+    expect(Math.max(byEst.est.A, byEst.est.B)).toBe(12);
+  });
+
   it('balances real current, not the 125% sizing figure', () => {
     // Real: {16, 15} | {17} → 31 A peak. Balancing the sizing figure (16 → 20)
     // would pick {17, 15} | {16} → 32 A real peak.

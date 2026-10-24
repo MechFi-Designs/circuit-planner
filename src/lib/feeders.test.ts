@@ -25,6 +25,7 @@ function twoPanels(mode: AppState['mode'] = 'split'): AppState {
     mode,
     serviceA: 200,
     optimizeAcrossPanels: true,
+    balanceOn: 'max',
     panels: [{ id: 'main', name: 'Main', mainA: 200, fedFrom: null, spaces: 20, maxCircuits: 40 }],
     loads: [load('main', '120-1p', 20)],
   };

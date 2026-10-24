@@ -1,4 +1,4 @@
-import type { AppState, Load, Panel, ServiceMode } from '../types';
+import type { AppState, BalanceBasis, Load, Panel, ServiceMode } from '../types';
 import { derive, feederTotals, postOrder } from './derive';
 import { MODE_PHASES, phaseOfSlot, polesOf } from './nec';
 import { Board, layoutPanel, spanOf, tandemIds, type PanelLayout } from './placement';
@@ -39,8 +39,9 @@ function score(amps: PhaseAmps, mode: ServiceMode): Score {
 const better = (a: Score, b: Score) => betterVec(a, b);
 
 /**
- * Re-slot unlocked circuits in a panel to balance real max phase current
- * (the 125% continuous factor is a sizing margin, not extra current).
+ * Re-slot unlocked circuits in a panel to balance real phase current: max
+ * (nameplate) or estimated (typical), per `basis`. The 125% continuous factor
+ * is a sizing margin, not extra current, so it never drives balance.
  * Greedy seed (largest first, best phase position) followed by local search
  * of single moves and same-pole-count swaps.
  *
@@ -54,8 +55,11 @@ export function optimizePanel(
   mode: ServiceMode,
   current: PanelLayout,
   feeders: Map<string, PhaseTotals> = new Map(),
+  /** Balance max (nameplate) current or estimated (typical) current. */
+  basis: BalanceBasis = 'max',
 ): OptimizeResult {
-  const before = phaseTotals(loads, current.placements, feeders).max;
+  const before = phaseTotals(loads, current.placements, feeders)[basis];
+  const weight = (l: Load) => circuitAmps(l)[basis];
   const noChange = (failed: boolean): OptimizeResult => ({
     slots: new Map(),
     before,
@@ -71,10 +75,10 @@ export function optimizePanel(
   const add = (l: Load, start: number, sign: 1 | -1, target: PhaseAmps = amps) => {
     const fed = feeders.get(l.id);
     if (fed) {
-      for (const ph of MODE_PHASES[mode]) target[ph] += sign * fed.max[ph];
+      for (const ph of MODE_PHASES[mode]) target[ph] += sign * fed[basis][ph];
       return;
     }
-    const w = circuitAmps(l).max;
+    const w = weight(l);
     for (const s of spanOf(start, polesOf(l.kind))) target[phaseOfSlot(s, mode)] += sign * w;
   };
 
@@ -92,7 +96,7 @@ export function optimizePanel(
   const movable = loads
     .map((l, i) => ({ l, i }))
     .filter(({ l }) => !l.locked)
-    .sort((a, b) => polesOf(b.l.kind) - polesOf(a.l.kind) || circuitAmps(b.l).max - circuitAmps(a.l).max || a.i - b.i)
+    .sort((a, b) => polesOf(b.l.kind) - polesOf(a.l.kind) || weight(b.l) - weight(a.l) || a.i - b.i)
     .map(({ l }) => l);
   if (!movable.length) return noChange(false);
 
@@ -258,7 +262,7 @@ function optimizeSlots(state: AppState): { state: AppState; failed: string[] } {
   for (const p of postOrder(state.panels)) {
     const d = derive(working);
     const loads = working.loads.filter((l) => l.panelId === p.id);
-    const res = optimizePanel(p, loads, state.mode, d.layouts.get(p.id)!, feederTotals(d, loads));
+    const res = optimizePanel(p, loads, state.mode, d.layouts.get(p.id)!, feederTotals(d, loads), state.balanceOn);
     if (res.failed) failed.push(p.name);
     if (!res.changed) continue;
     working = {
@@ -307,7 +311,7 @@ function designScore(state: AppState): number[] {
   return [
     unplaced,
     ...utilScore(state, (p) => peak(d.totals.get(p.id)!.design), peak(d.service.design)),
-    imbalance(d.service.max, state.mode),
+    imbalance(d.service[state.balanceOn], state.mode),
   ];
 }
 
@@ -419,8 +423,8 @@ export function optimizeAll(state: AppState): OptimizeAllResult {
     }));
   return {
     loads: changed ? best.state.loads : null,
-    before: derive(state).service.max,
-    after: derive(best.state).service.max,
+    before: derive(state).service[state.balanceOn],
+    after: derive(best.state).service[state.balanceOn],
     moved,
     failed: best.failed,
     crossPanelNoGain: crossAllowed && moved.length === 0,

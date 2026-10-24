@@ -49,10 +49,24 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
               Move circuits between panels
             </label>
           )}
+          <label
+            className="check"
+            title="Which current Optimize evens out across phases. Estimated uses each circuit's Est. A (blank = max). Rating checks always use the sizing load."
+          >
+            Balance on
+            <select
+              value={state.balanceOn}
+              aria-label="Balance on"
+              onChange={(e) => dispatch({ type: 'setBalanceOn', basis: e.target.value as AppState['balanceOn'] })}
+            >
+              <option value="max">Max load</option>
+              <option value="est">Estimated load</option>
+            </select>
+          </label>
           <button
             className="btn primary"
             onClick={onOptimize}
-            title="Re-slot unlocked circuits so max current is spread evenly across phases"
+            title={`Re-slot unlocked circuits so ${state.balanceOn === 'est' ? 'estimated' : 'max'} current is spread evenly across phases`}
           >
             ⚖ Optimize
           </button>

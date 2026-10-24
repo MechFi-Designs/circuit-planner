@@ -1,5 +1,7 @@
 export type ServiceMode = 'split' | 'three';
 
+export type BalanceBasis = 'max' | 'est';
+
 export type Phase = 'A' | 'B' | 'C';
 
 /** Circuit voltage / pole configuration. */
@@ -63,4 +65,6 @@ export interface AppState {
   loads: Load[];
   /** Let Optimize move unlocked circuits between panels. */
   optimizeAcrossPanels: boolean;
+  /** Which current Optimize evens out across phases: max (nameplate) or estimated (typical). */
+  balanceOn: BalanceBasis;
 }

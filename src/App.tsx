@@ -70,7 +70,8 @@ export default function App() {
       lines.push(`Moved ${res.moved.length} circuit${res.moved.length > 1 ? 's' : ''} between panels: ${list}.`);
     }
     const phasesChanged = MODE_PHASES[state.mode].some((ph) => Math.abs(res.before[ph] - res.after[ph]) > 0.05);
-    if (res.loads && phasesChanged) lines.push(`Service phases (max A): ${parts.join(' · ')}.`);
+    const basisLabel = state.balanceOn === 'est' ? 'estimated' : 'max';
+    if (res.loads && phasesChanged) lines.push(`Service phases (${basisLabel} A): ${parts.join(' · ')}.`);
     else if (res.loads && !res.moved.length) {
       lines.push('Re-slotted unlocked circuits into a tidier layout; phase balance was already as good as it gets.');
     }

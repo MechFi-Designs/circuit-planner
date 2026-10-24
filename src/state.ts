@@ -1,4 +1,4 @@
-import type { AppState, Device, Load, LoadKind, Panel, ServiceMode } from './types';
+import type { AppState, BalanceBasis, Device, Load, LoadKind, Panel, ServiceMode } from './types';
 import { feederKind, KINDS, KINDS_BY_MODE, remapKind } from './lib/nec';
 import { isWithin } from './lib/derive';
 import { optimizeAll } from './lib/optimize';
@@ -50,6 +50,7 @@ export function defaultState(): AppState {
     mode: 'split',
     serviceA: 200,
     optimizeAcrossPanels: true,
+    balanceOn: 'max',
     panels: [panel],
     loads: [
       mk('Kitchen counter 1', 16, '120-1p', 4),
@@ -85,6 +86,7 @@ export type Action =
   | { type: 'removeLoad'; id: string }
   | { type: 'setLoads'; loads: Load[] }
   | { type: 'setOptimizeAcrossPanels'; on: boolean }
+  | { type: 'setBalanceOn'; basis: BalanceBasis }
   | { type: 'clearLoads' }
   | { type: 'replace'; state: AppState };
 
@@ -174,6 +176,8 @@ function apply(state: AppState, action: Action): AppState {
       return { ...state, loads: action.loads };
     case 'setOptimizeAcrossPanels':
       return { ...state, optimizeAcrossPanels: action.on };
+    case 'setBalanceOn':
+      return { ...state, balanceOn: action.basis };
     case 'clearLoads':
       return { ...state, loads: state.loads.filter((l) => l.feeds) };
     case 'replace':
@@ -240,6 +244,7 @@ export function sanitize(raw: unknown): AppState | null {
     mode,
     serviceA: num(r.serviceA, 200),
     optimizeAcrossPanels: r.optimizeAcrossPanels !== false,
+    balanceOn: r.balanceOn === 'est' ? 'est' : 'max',
     panels,
     loads,
   });
