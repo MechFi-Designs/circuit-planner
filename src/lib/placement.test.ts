@@ -23,6 +23,7 @@ const load = (kind: LoadKind, amps = 10, extra: Partial<Load> = {}): Load => ({
   equip: 'general',
   hp: null,
   motorStart: 'dol',
+  motorBasis: 'table',
   mca: null,
   mocp: null,
   breakerA: null,

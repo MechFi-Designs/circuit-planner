@@ -3,7 +3,7 @@ import type { AppState, Device, Load } from '../types';
 import { newDevice, type Action } from '../state';
 import type { Derived } from '../lib/derive';
 import { circuitAmps, deviceAmps } from '../lib/loadCalc';
-import { BREAKER_SIZES, formatWire, KINDS } from '../lib/nec';
+import { BREAKER_SIZES, formatWire, KINDS, motorFlc } from '../lib/nec';
 import { fmtA, fmtKw } from '../lib/sizing';
 import { DEVICE_PRESETS, presetByName } from '../lib/devicePresets';
 import { NumInput } from './NumInput';
@@ -363,12 +363,15 @@ function EquipmentPanel({ load, dispatch, derived }: Omit<CircuitProps, 'state'>
 
   const notes: string[] = [];
   if (load.equip === 'motor' && load.motorStart === 'dol') {
+    const tableFlc = motorFlc(load.kind, load.hp);
     notes.push(
-      s.flcFromTable
-        ? `Code full-load current ${fmtA(s.flc!)} A (NEC Table ${table}, ${load.hp} hp at ${volts}). The ${fmtA(load.amps)} A nameplate is used for load totals and the overload setting.`
-        : `Using the ${fmtA(load.amps)} A nameplate until horsepower is entered.`,
+      load.motorBasis === 'nameplate'
+        ? `Sized from the ${fmtA(load.amps)} A nameplate, allowed for listed equipment marked with hp and amps (NEC 430.6(A)(1) Exc. 3).${tableFlc ? ` The NEC table would use ${fmtA(tableFlc)} A.` : ''}`
+        : s.flcFromTable
+          ? `Code full-load current ${fmtA(s.flc!)} A (NEC Table ${table}, ${load.hp} hp at ${volts}). The ${fmtA(load.amps)} A nameplate is used for load totals and the overload setting.`
+          : `Using the ${fmtA(load.amps)} A nameplate until horsepower is entered.`,
       `Wire: 125% of ${fmtA(s.flc!)} A = ${fmtA(s.required)} A → ${formatWire(s.cu)} Cu (NEC 430.22).`,
-      `Breaker: up to ${s.maxAllowed} A allowed (250% of FLC, NEC 430.52). Auto picks ${s.auto} A (about 175%) to leave room for starting current.`,
+      `Breaker: Auto picks the smallest that fits, ${s.auto} A. If it trips on start you can go up to ${s.maxAllowed} A (250% of full-load current, NEC 430.52); the motor's overload relay handles overloads.`,
       'Panels and the service add 25% of the largest motor (NEC 430.24).',
     );
   } else if (load.equip === 'motor') {
@@ -436,6 +439,18 @@ function EquipmentPanel({ load, dispatch, derived }: Omit<CircuitProps, 'state'>
                 <option value="vfd">Drive / soft starter</option>
               </select>
             </label>
+            {load.motorStart === 'dol' && (
+              <label title="NEC 430.6(A)(1) uses the full-load current tables by default. Listed equipment (UL / ETL / CSA) marked with both hp and amps may use its nameplate amps instead (Exception No. 3).">
+                <span>Size from</span>
+                <select
+                  value={load.motorBasis}
+                  onChange={(e) => update({ motorBasis: e.target.value as Load['motorBasis'] })}
+                >
+                  <option value="table">NEC table (by hp)</option>
+                  <option value="nameplate">Nameplate amps (listed equipment)</option>
+                </select>
+              </label>
+            )}
           </>
         )}
         {load.equip === 'hvac' && (

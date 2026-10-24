@@ -28,7 +28,9 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
   - The 🔌 button on each load-table row jumps to that circuit's devices.
 - **Equipment types:** set a circuit's **Type** to General, Motor or HVAC.
   - **Motor (NEC 430):** enter the nameplate amps, horsepower and how it starts.
-    - Magnetic-start motors size from the code full-load current (Tables 430.248 / 430.250): wire at 125% (430.22), breaker up to 250% (430.52). Auto picks about 175% to leave room for starting current.
+    - Magnetic-start motors size from the code full-load current (Tables 430.248 / 430.250). **Size from: Nameplate** applies instead to listed equipment marked with hp and amps (430.6(A)(1) Exception No. 3).
+    - Wire is sized at 125% of the full-load current (430.22).
+    - Auto picks the smallest breaker that fits. If it trips on start, 430.52 allows up to 250%.
     - Drive / soft-start motors size from the drive's input current at 125% (430.122).
     - Panels and the service add 25% of the largest motor (430.24).
   - **HVAC (NEC 440):** enter the nameplate MCA and MOCP. Wire is sized to the MCA, and the breaker can't go above the MOCP.

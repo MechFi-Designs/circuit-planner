@@ -8,6 +8,13 @@ export type EquipType = 'general' | 'motor' | 'hvac';
 /** How a motor starts: across-the-line magnetic starter, or a drive / soft starter. */
 export type MotorStart = 'dol' | 'vfd';
 
+/**
+ * Where a magnetic-start motor's sizing current comes from: the NEC full-load
+ * current tables (430.6(A)(1), the default), or the nameplate amps of listed
+ * motor-driven equipment marked with hp and amps (430.6(A)(1) Exception No. 3).
+ */
+export type MotorBasis = 'table' | 'nameplate';
+
 export type Phase = 'A' | 'B' | 'C';
 
 /** Circuit voltage / pole configuration. */
@@ -64,6 +71,7 @@ export interface Load {
   /** Motor horsepower, for the NEC full-load current tables. */
   hp: number | null;
   motorStart: MotorStart;
+  motorBasis: MotorBasis;
   /** HVAC nameplate minimum circuit ampacity. */
   mca: number | null;
   /** HVAC nameplate maximum overcurrent protection. */

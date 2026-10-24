@@ -20,6 +20,7 @@ const circuit = (kind: LoadKind, amps: number, extra: Partial<Load> = {}): Load 
   equip: 'general',
   hp: null,
   motorStart: 'dol',
+  motorBasis: 'table',
   mca: null,
   mocp: null,
   breakerA: null,
@@ -46,14 +47,27 @@ describe('motor circuits (NEC 430)', () => {
     expect(s.required).toBeCloseTo(68.75); // 125% of FLC
     expect(formatWire(s.cu)).toBe('#4'); // #6 is only 65 A
     expect(s.maxAllowed).toBe(150); // 250% = 137.5 → next size up
-    expect(s.breaker).toBe(100); // default 175% = 96.25 → 100 A
+    expect(s.breaker).toBe(70); // smallest fit: 125% = 68.75 → 70 A
     expect(s.issues).toEqual([]);
+  });
+
+  it('listed equipment can size from its nameplate (430.6(A)(1) Exc. 3)', () => {
+    // The 10 hp compressor's 40 A nameplate: 125% = 50 A → #8 Cu on a 50 A breaker.
+    const s = sizeLoad(circuit('208-2p', 40, { equip: 'motor', hp: 10, motorBasis: 'nameplate' }));
+    expect(s.flc).toBe(40);
+    expect(s.flcFromTable).toBe(false);
+    expect([formatWire(s.cu), s.breaker, s.maxAllowed]).toEqual(['#8', 50, 100]);
+    expect(s.issues).toEqual([]);
+    // Its existing 50 A breaker is fine.
+    expect(
+      sizeLoad(circuit('208-2p', 40, { equip: 'motor', hp: 10, motorBasis: 'nameplate', breakerA: 50 })).issues,
+    ).toEqual([]);
   });
 
   it('10 hp three-phase motor at 208 V', () => {
     const s = sizeLoad(circuit('208-3p', 28, { equip: 'motor', hp: 10 }));
     expect(formatWire(s.cu)).toBe('#8'); // 38.5 A
-    expect([s.breaker, s.maxAllowed]).toEqual([60, 80]);
+    expect([s.breaker, s.maxAllowed]).toEqual([40, 80]);
   });
 
   it('drive-fed motor sizes from its input current with no 430.52 table limit', () => {
@@ -67,11 +81,14 @@ describe('motor circuits (NEC 430)', () => {
     expect(sizeLoad(circuit('208-2p', 40, { equip: 'motor' })).issues[0]).toMatch(/horsepower/);
   });
 
-  it('flags a breaker above the 430.52 maximum or too small to start', () => {
+  it('flags a breaker above the 430.52 maximum or below the full-load current', () => {
     const big = sizeLoad(circuit('208-2p', 40, { equip: 'motor', hp: 10, breakerA: 175 }));
     expect(big.issues.join(' ')).toMatch(/above the 150 A maximum/);
-    const small = sizeLoad(circuit('208-2p', 40, { equip: 'motor', hp: 10, breakerA: 60 }));
-    expect(small.issues.join(' ')).toMatch(/may trip on start/);
+    // 50 A is below the 55 A table current, and the hint points at the nameplate option.
+    const small = sizeLoad(circuit('208-2p', 40, { equip: 'motor', hp: 10, breakerA: 50 }));
+    expect(small.issues.join(' ')).toMatch(/below the 55 A full-load current.*size from the nameplate/);
+    // 60 A is above the 55 A full-load current: allowed, no warning.
+    expect(sizeLoad(circuit('208-2p', 40, { equip: 'motor', hp: 10, breakerA: 60 })).issues).toEqual([]);
   });
 });
 

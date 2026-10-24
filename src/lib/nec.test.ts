@@ -18,6 +18,7 @@ const base: Load = {
   equip: 'general',
   hp: null,
   motorStart: 'dol',
+  motorBasis: 'table',
   mca: null,
   mocp: null,
   breakerA: null,

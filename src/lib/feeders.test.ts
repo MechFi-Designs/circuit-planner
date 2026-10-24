@@ -17,6 +17,7 @@ const load = (panelId: string, kind: LoadKind, amps: number, extra: Partial<Load
   equip: 'general',
   hp: null,
   motorStart: 'dol',
+  motorBasis: 'table',
   mca: null,
   mocp: null,
   breakerA: null,

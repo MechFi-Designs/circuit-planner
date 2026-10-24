@@ -42,12 +42,13 @@ const volts = (kind: LoadKind) => KINDS[kind].volts * (KINDS[kind].poles === 3 ?
 
 /**
  * Current used to size a motor circuit: the code full-load current from the
- * NEC tables for an across-the-line motor with hp entered (430.6), otherwise
- * the nameplate / drive input current. Null for non-motor circuits.
+ * NEC tables for an across-the-line motor with hp entered (430.6(A)(1)), or the
+ * nameplate when sizing listed equipment from its nameplate (Exception No. 3),
+ * or a drive's input current. Null for non-motor circuits.
  */
 export function motorFlcOf(load: Load): number | null {
   if (load.equip !== 'motor') return null;
-  const table = load.motorStart === 'dol' ? motorFlc(load.kind, load.hp) : null;
+  const table = load.motorStart === 'dol' && load.motorBasis !== 'nameplate' ? motorFlc(load.kind, load.hp) : null;
   return table ?? load.amps;
 }
 

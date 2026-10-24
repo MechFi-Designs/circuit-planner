@@ -19,6 +19,7 @@ const circuit = (kind: LoadKind, devices: Partial<Device>[], extra: Partial<Load
   equip: 'general',
   hp: null,
   motorStart: 'dol',
+  motorBasis: 'table',
   mca: null,
   mocp: null,
   breakerA: null,

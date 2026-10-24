@@ -12,9 +12,6 @@ import {
   type WireResult,
 } from './nec';
 
-/** Default breaker for an across-the-line motor, % of FLC: leaves room to start, well under the 250% max. */
-const MOTOR_BREAKER_DEFAULT_PCT = 1.75;
-
 export interface LoadSizing {
   /** Ampacity the circuit's wire must carry (sizing current). */
   required: number;
@@ -52,16 +49,20 @@ export function sizeLoad(load: Load): LoadSizing {
   if (load.equip === 'motor') {
     // NEC 430: conductors at 125% of FLC (430.22); inverse-time breaker up to 250% (430.52).
     flc = motorFlcOf(load)!;
-    flcFromTable = load.motorStart === 'dol' && motorFlc(load.kind, load.hp) != null;
+    flcFromTable = load.motorStart === 'dol' && load.motorBasis !== 'nameplate' && motorFlc(load.kind, load.hp) != null;
     required = flc * 1.25;
     exemptSmallConductor = true;
     if (load.motorStart === 'dol') {
-      // When 250% isn't a standard size, the next size up is allowed (430.52(C)(1) Exception No. 1).
+      // 430.52 only sets a ceiling: 250% of FLC, or the next size up when that isn't
+      // standard (Exception No. 1). There's no minimum beyond starting the motor, so
+      // Auto picks the smallest breaker that matches the wire (125% of FLC), and the
+      // ceiling is there if it trips on start.
       maxAllowed = sizeBreaker(flc * MOTOR_BREAKER_MAX_PCT);
-      auto = sizeBreaker(flc * MOTOR_BREAKER_DEFAULT_PCT);
-      if (auto && maxAllowed && auto > maxAllowed) auto = maxAllowed;
-      if (!flcFromTable && flc > 0) {
-        issues.push('Enter the horsepower so the breaker and wire use the NEC full-load current table (430.6).');
+      auto = sizeBreaker(required);
+      if (load.motorBasis !== 'nameplate' && !flcFromTable && flc > 0) {
+        issues.push(
+          'Enter the horsepower to use the NEC full-load current table (430.6), or size from the nameplate if the equipment is listed.',
+        );
       }
     } else {
       // Drive / soft starter: conductors at 125% of rated input current (430.122); breaker per the drive's manual.
@@ -95,8 +96,12 @@ export function sizeLoad(load: Load): LoadSizing {
     if (load.equip === 'hvac' && b < required - 1e-9) {
       issues.push(`The ${b} A breaker is below the ${fmtA(required)} A MCA and may trip under full load.`);
     }
-    if (load.equip === 'motor' && load.motorStart === 'dol' && flc && b < flc * 1.25) {
-      issues.push(`The ${b} A breaker is close to the motor's ${fmtA(flc)} A full-load current and may trip on start.`);
+    if (load.equip === 'motor' && load.motorStart === 'dol' && flc && b < flc) {
+      const hint =
+        flcFromTable && load.amps < flc
+          ? ' If the equipment is listed and its nameplate shows amps, size from the nameplate instead (430.6(A)(1) Exc. 3).'
+          : '';
+      issues.push(`The ${b} A breaker is below the ${fmtA(flc)} A full-load current used for sizing.${hint}`);
     }
   }
 
