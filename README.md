@@ -2,7 +2,7 @@
 
 Plan an electrical panel in your browser. Pick the service, lay out your panels, and list your loads. For each circuit the app picks the breaker and the copper and aluminum THHN wire sizes. It also shows how much of the service you're using and how evenly the load is spread across the phases.
 
-**Live app:** https://rydanmechfi.github.io/circuit-planner/
+**Live app:** https://mechfi-designs.github.io/circuit-planner/
 
 ## Features
 

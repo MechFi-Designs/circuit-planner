@@ -265,7 +265,7 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
     CONTENT_W,
   ) as string[];
   doc.text(notes, MARGIN, fy);
-  doc.text('Made with Circuit Planner  ·  rydanmechfi.github.io/circuit-planner', MARGIN, PAGE_H - MARGIN + 10);
+  doc.text('Made with Circuit Planner  ·  mechfi-designs.github.io/circuit-planner', MARGIN, PAGE_H - MARGIN + 10);
 }
 
 /** Build a letter-size PDF with one circuit directory page per panel. */
