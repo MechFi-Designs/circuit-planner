@@ -62,12 +62,12 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
 | --- | --- |
 | Required ampacity | Load × 1.25 if continuous (NEC 210.19/210.20), otherwise the load |
 | Breaker | Smallest NEC 240.6(A) standard rating ≥ the required ampacity |
-| Wire | Smallest THHN with a **75 °C** ampacity (110.14(C) termination limit) ≥ the breaker rating, within the 240.4(D) small-conductor limits (#14 Cu = 15 A, #12 Cu = 20 A, #10 Cu = 30 A, #12 Al = 15 A, #10 Al = 25 A) |
+| Wire | Smallest THHN whose **75 °C** ampacity (110.14(C) termination limit) carries the sizing load (210.19(A)) and is protected by the breaker: either ampacity ≥ breaker, or the breaker is the next standard size up (240.4(B)). Example: a 50 A continuous load gives a 62.5 A sizing load and a 70 A breaker, and #6 Cu (65 A) qualifies. The 240.4(D) small-conductor limits still apply (#14 Cu = 15 A, #12 Cu = 20 A, #10 Cu = 30 A) |
 | Ground (EGC) | Copper per Table 250.122 based on the breaker rating, never larger than the circuit conductors (250.122(A)) |
 | kW | V × I for single phase, √3 × V × I for 3-phase |
 | Phase load | Each circuit's current is added to every phase its breaker poles connect to. This is conservative for line-to-line loads. |
 
-All wire is copper; aluminum sizing is still in the code but hidden for now. The 90 °C THHN ampacity appears in the wire-size tooltip as the starting point for derating. Wire sizes are matched to the breaker, so the 240.4(B) next-size-up allowance is not used. Ampacities come from NEC 2023 Table 310.16.
+All wire is copper; aluminum sizing is still in the code but hidden for now. The 90 °C THHN ampacity appears in the wire-size tooltip as the starting point for derating. 240.4(B) doesn't apply to multi-receptacle circuits for plug-in loads; at 15/20 A the 240.4(D) limits govern anyway. Subpanel feeders are still sized to their full breaker rating, so the panel can be loaded up later. Ampacities come from NEC 2023 Table 310.16.
 
 > Planning aid only. It does not cover ambient or conduit-fill derating, voltage drop, demand factors or local amendments. Check with your AHJ and a licensed electrician.
 

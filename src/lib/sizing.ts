@@ -5,6 +5,7 @@ import {
   kwOf,
   motorFlc,
   MOTOR_BREAKER_MAX_PCT,
+  sizeBranchWire,
   sizeBreaker,
   sizeEgc,
   sizeWire,
@@ -99,14 +100,15 @@ export function sizeLoad(load: Load): LoadSizing {
     }
   }
 
-  // General circuits: wire protected by its breaker (sized to the breaker, 240.4(D) limits).
+  // General circuits: wire carries the sizing load and is protected by its breaker,
+  // using the next-size-up rule where it applies (240.4(B), with 240.4(D) limits).
   // Motor/HVAC: wire sized to its own ampacity; the overloads protect it (240.4(G)).
   const cu = exemptSmallConductor
     ? required > 0
       ? sizeWire(required, 'cu', false)
       : null
     : breaker
-      ? sizeWire(breaker, 'cu')
+      ? sizeBranchWire(required, breaker, 'cu')
       : null;
 
   return {

@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
+import type { Load } from '../types';
 import { formatWire, kwOf, requiredAmpacity, sizeBreaker, sizeEgc, sizeWire } from './nec';
+import { sizeLoad } from './sizing';
+
+const base: Load = {
+  id: 'b',
+  panelId: 'p',
+  name: '',
+  amps: 0,
+  estAmps: null,
+  kind: '240-2p',
+  continuous: false,
+  tandem: false,
+  slot: null,
+  locked: false,
+  devices: [],
+  equip: 'general',
+  hp: null,
+  motorStart: 'dol',
+  mca: null,
+  mocp: null,
+  breakerA: null,
+};
 
 function size(amps: number, continuous = false) {
   const breaker = sizeBreaker(requiredAmpacity(amps, continuous))!;
@@ -59,5 +81,33 @@ describe('kW', () => {
     expect(kwOf('240-2p', 10)).toBeCloseTo(2.4);
     expect(kwOf('208-2p', 10)).toBeCloseTo(2.08);
     expect(kwOf('208-3p', 10)).toBeCloseTo(3.603, 3);
+  });
+});
+
+describe('next size up for branch circuits (NEC 240.4(B))', () => {
+  const branch = (amps: number, continuous = false) => {
+    const s = sizeLoad({ ...base, amps, continuous });
+    return { breaker: s.breaker, cu: formatWire(s.cu), nextSizeUp: !!s.cu?.nextSizeUp };
+  };
+  it('50 A continuous → 70 A breaker on #6 Cu (65 A; 70 A is the next standard size)', () => {
+    expect(branch(50, true)).toEqual({ breaker: 70, cu: '#6', nextSizeUp: true });
+  });
+  it('40 A continuous → 50 A breaker on #8 Cu (50 A at 75 °C, no exception needed)', () => {
+    expect(branch(40, true)).toEqual({ breaker: 50, cu: '#8', nextSizeUp: false });
+  });
+  it('85 A → 90 A breaker on #4 Cu (85 A)', () => {
+    expect(branch(85)).toEqual({ breaker: 90, cu: '#4', nextSizeUp: true });
+  });
+  it('does not apply when the wire ampacity is itself a standard size', () => {
+    // #8 = 50 A is a standard rating, so it can't go on a 60 A breaker.
+    expect(branch(52)).toEqual({ breaker: 60, cu: '#6', nextSizeUp: false });
+  });
+  it('still honors the 240.4(D) small-conductor limits', () => {
+    // #12 is 25 A at 75 °C, but 240.4(D) caps it at 20 A, so a 25 A breaker needs #10.
+    expect(branch(21)).toEqual({ breaker: 25, cu: '#10', nextSizeUp: false });
+  });
+  it('the wire still has to carry the load', () => {
+    // 66 A load → 70 A breaker, and #6 (65 A) is too small for the load itself.
+    expect(branch(66)).toEqual({ breaker: 70, cu: '#4', nextSizeUp: false });
   });
 });

@@ -16,6 +16,8 @@ export interface WireRow {
   a60: number;
   a75: number;
   a90: number;
+  /** Protected by the next standard breaker size above its ampacity (NEC 240.4(B)). */
+  nextSizeUp?: boolean;
 }
 
 /** NEC 2023 Table 310.16, copper (THHN/THWN-2 use the 75 °C / 90 °C columns). */
@@ -204,6 +206,8 @@ export interface WireResult {
   sets: number;
   a75: number;
   a90: number;
+  /** Protected by the next standard breaker size above its ampacity (NEC 240.4(B)). */
+  nextSizeUp?: boolean;
 }
 
 /**
@@ -232,6 +236,32 @@ export function sizeWire(amps: number, material: Material, smallConductorLimits 
     }
   }
   return null;
+}
+
+/**
+ * General branch-circuit conductor: ampacity ≥ the sizing load (210.19(A)),
+ * and protected by the breaker (240.4). Either its 75 °C ampacity is ≥ the
+ * breaker, or (240.4(B)) the ampacity isn't a standard breaker rating and the
+ * breaker is no bigger than the next standard size up, for breakers ≤ 800 A.
+ * The 240.4(D) small-conductor limits still apply.
+ *
+ * Example: 50 A continuous → 62.5 A sizing load → 70 A breaker; #6 Cu (65 A)
+ * qualifies because 70 A is the next standard size above 65 A.
+ */
+export function sizeBranchWire(load: number, breakerA: number, material: Material): WireResult | null {
+  const table = material === 'cu' ? CU_TABLE : AL_TABLE;
+  const limits = SMALL_CONDUCTOR_LIMIT[material];
+  for (const row of table) {
+    const limit = limits[row.size];
+    if ((limit !== undefined && limit < breakerA) || row.a75 < load) continue;
+    const wire = { size: row.size, sets: 1, a75: row.a75, a90: row.a90 };
+    if (row.a75 >= breakerA) return wire;
+    const nextUp = sizeBreaker(row.a75);
+    if (breakerA <= 800 && !BREAKER_SIZES.includes(row.a75) && nextUp != null && breakerA <= nextUp) {
+      return { ...wire, nextSizeUp: true };
+    }
+  }
+  return sizeWire(Math.max(load, breakerA), material);
 }
 
 export function formatWire(w: WireResult | null): string {

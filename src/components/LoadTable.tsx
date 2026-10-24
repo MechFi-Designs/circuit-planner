@@ -21,6 +21,9 @@ interface Props {
 function wireTitle(w: WireResult | null, breaker: number | null): string | undefined {
   if (!w || !breaker) return undefined;
   const per = w.sets > 1 ? ' per set' : '';
+  if (w.nextSizeUp) {
+    return `75 °C: ${w.a75} A${per}. Carries the load; the ${breaker} A breaker is the next standard size up, which NEC 240.4(B) allows\n90 °C: ${w.a90} A${per}, the derating basis`;
+  }
   return `75 °C: ${w.a75} A${per} — termination limit, governs (≥ ${breaker} A breaker)\n90 °C: ${w.a90} A${per} — THHN rating, use as the derating basis`;
 }
 
@@ -89,9 +92,10 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
 
       <p className="legend muted">
         Breaker = next standard size ≥ max load (× 1.25 if continuous). Wire = smallest copper THHN whose 75 °C ampacity
-        is ≥ the breaker, with the 240.4(D) small-conductor limits applied (hover to see both ratings). EGC = copper
-        equipment ground per Table 250.122. kW = V × I (√3 for 3-phase). Est. A is your guess at typical running current
-        (blank = max). It only feeds the estimated load figures, never the sizing.
+        carries the sizing load and is protected by the breaker: the breaker is at or below the wire's ampacity, or the
+        next standard size up (240.4(B)), with the 240.4(D) small-conductor limits (hover to see both ratings). EGC =
+        copper equipment ground per Table 250.122. kW = V × I (√3 for 3-phase). Est. A is your guess at typical running
+        current (blank = max). It only feeds the estimated load figures, never the sizing.
       </p>
     </section>
   );
