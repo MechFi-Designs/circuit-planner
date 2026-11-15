@@ -18,6 +18,7 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
   - The subpanel's load counts toward its parent's totals, and every load counts exactly once against the service.
   - Panels fed directly from the service share the one service rating.
 - **Load table:** name, max current, circuit type, continuous flag, and an optional estimated running current for each circuit.
+  - The Name column widens to fit each panel's longest name. Drag the edge of the Name heading to set your own width (remembered in this browser), and double-click it to go back to fitting the names.
   - Split phase: 120 V 1Φ (1-pole) or 240 V 1Φ (2-pole).
   - 3-phase: 120 V 1Φ (1-pole), 208 V 1Φ (2-pole) or 208 V 3Φ (3-pole).
 - **Devices tab:** build a circuit up from what's actually on it. For each device you enter a name, quantity, max and estimated draw (in W or A), and whether it's continuous.
@@ -50,9 +51,10 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
   - **Estimated** uses your Est. A figures, or max current where you left Est. A blank, to show realistic loading.
   - **Sizing** counts continuous loads at 125%. It isn't extra current; it's what breakers, wire, mains, feeders and the service must be rated for. It's shown separately and only when it differs from max load.
   - Phase balancing uses real current. Rating checks use the sizing load.
-- **Printable circuit map:** **Export PDF** downloads a letter-size circuit directory with one page per panel, ready to print and tape inside the panel door. Each panel card also has a **PDF** button for just that panel.
+- **Circuit plan PDF:** **Plan PDF** downloads the full plan as a table, grouped by panel in slot order. Each circuit shows its circuit number, description, voltage and poles, phase, load and sizing current, and the breaker, copper THHN wire and copper ground sizes. Long plans continue onto more pages, with the column headings repeated.
+- **Printable panel directories:** **Panel PDFs** downloads a letter-size circuit directory with one page per panel, ready to print and tape inside the panel door. Each panel card also has a **PDF** button for just that panel.
   - The page mirrors the panel: odd circuits on the left, even on the right, numbers next to the phase column, multi-pole breakers merged with a tie bar, and tandems split into A/B.
-  - Each circuit shows its description, breaker and copper wire size.
+  - Each circuit shows its description and breaker. Wire sizes are left to the plan PDF, so long descriptions have room.
   - The header shows the rating, service type and what the panel is fed from (including the parent breaker's spaces). The footer has per-phase load and kW.
 - **Saving and sharing:** your design autosaves in the browser.
   - **Save file** downloads it as `.json` and **Open file** loads it back, so it survives clearing browser data.
@@ -78,7 +80,7 @@ All wire is copper; aluminum sizing is still in the code but hidden for now. The
 ```sh
 npm install
 npm run dev     # local dev server
-npm test        # unit tests (Vitest)
+npm test        # unit tests (Vitest, via scripts/test.mjs)
 npm run build   # type-check + production build
 ```
 

@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type PointerEvent } from 'react';
 import type { AppState, EquipType, Load, LoadKind, Panel } from '../types';
 import type { Action } from '../state';
 import type { Derived } from '../lib/derive';
@@ -27,8 +27,53 @@ function wireTitle(w: WireResult | null, breaker: number | null): string | undef
   return `75 °C: ${w.a75} A${per} — termination limit, governs (≥ ${breaker} A breaker)\n90 °C: ${w.a90} A${per} — THHN rating, use as the derating basis`;
 }
 
+const NAME_W_KEY = 'circuit-planner:name-col-w';
+const NAME_MIN = 120;
+const NAME_MAX = 900;
+const clampName = (w: number) => Math.round(Math.min(NAME_MAX, Math.max(NAME_MIN, w)));
+
+function readNameW(): number | null {
+  try {
+    const v = Number(localStorage.getItem(NAME_W_KEY));
+    return v > 0 ? clampName(v) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveNameW(w: number | null) {
+  try {
+    if (w == null) localStorage.removeItem(NAME_W_KEY);
+    else localStorage.setItem(NAME_W_KEY, String(w));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+/** Width in px of `text` in the load table's input font. */
+function textWidth(text: string): number {
+  if (measureCtx === undefined) measureCtx = document.createElement('canvas').getContext('2d');
+  if (!measureCtx) return text.length * 7.5;
+  const sample = document.querySelector('.loads .name-col input') ?? document.body;
+  measureCtx.font = getComputedStyle(sample).font || '13px system-ui, sans-serif';
+  return measureCtx.measureText(text).width;
+}
+
+/** Name column width that shows the longest name in full (input padding + 🔌 button included). */
+function fitNameWidth(names: string[]): number {
+  const longest = Math.max(0, ...names.map(textWidth));
+  return clampName(longest + 28 + 44 + 12);
+}
+
 export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOptimize, onOpenDevices }: Props) {
   const multiPanel = state.panels.length > 1;
+  // Name column: fits the longest name until the user drags it to a width of their own.
+  const [userNameW, setUserNameW] = useState<number | null>(readNameW);
+  const setNameW = (w: number | null) => {
+    setUserNameW(w);
+    saveNameW(w);
+  };
 
   useEffect(() => {
     if (selectedId) document.getElementById(`row-${selectedId}`)?.scrollIntoView({ block: 'nearest' });
@@ -84,6 +129,8 @@ export function LoadTable({ state, dispatch, derived, selectedId, onSelect, onOp
           dispatch={dispatch}
           derived={derived}
           multiPanel={multiPanel}
+          userNameW={userNameW}
+          onNameW={setNameW}
           selectedId={selectedId}
           onSelect={onSelect}
           onOpenDevices={onOpenDevices}
@@ -107,9 +154,46 @@ interface PanelLoadsProps {
   dispatch: Dispatch<Action>;
   derived: Derived;
   multiPanel: boolean;
+  /** Name column width the user dragged to (all panels), or null to fit this panel's names. */
+  userNameW: number | null;
+  /** Set a user width, or null to go back to fitting the names. */
+  onNameW: (w: number | null) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onOpenDevices: (id: string) => void;
+}
+
+/** Drag handle on the Name header; double-click fits the column to the names again. */
+function NameResizer({ onNameW }: { onNameW: (w: number | null) => void }) {
+  const drag = useRef<{ x: number; w: number } | null>(null);
+  const down = (e: PointerEvent<HTMLSpanElement>) => {
+    const th = e.currentTarget.parentElement;
+    if (!th) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { x: e.clientX, w: th.getBoundingClientRect().width };
+  };
+  const move = (e: PointerEvent<HTMLSpanElement>) => {
+    if (drag.current) onNameW(clampName(drag.current.w + e.clientX - drag.current.x));
+  };
+  const up = () => {
+    drag.current = null;
+  };
+  return (
+    <span
+      className="col-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize name column"
+      title="Drag to resize · double-click to fit names"
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+      onDoubleClick={() => onNameW(null)}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
 }
 
 function PanelLoads({
@@ -118,6 +202,8 @@ function PanelLoads({
   dispatch,
   derived,
   multiPanel,
+  userNameW,
+  onNameW,
   selectedId,
   onSelect,
   onOpenDevices,
@@ -126,6 +212,14 @@ function PanelLoads({
   const loads = state.loads.filter((l) => l.panelId === panel.id);
   const update = (id: string, patch: Partial<Load>) => dispatch({ type: 'updateLoad', id, patch });
   const tandemOk = panel.maxCircuits > panel.spaces;
+  const namesKey = loads
+    .map((l) => {
+      const sub = derived.feederOf.get(l.id);
+      return sub ? `→ ${sub.name} feeder` : l.name;
+    })
+    .join('\u0000');
+  const fitW = useMemo(() => fitNameWidth(namesKey.split('\u0000')), [namesKey]);
+  const nameW = userNameW ?? fitW;
 
   return (
     <div className="panel-loads">
@@ -135,7 +229,10 @@ function PanelLoads({
           <thead>
             <tr>
               <th>Slot</th>
-              <th className="name-col">Name</th>
+              <th className="name-col" style={{ minWidth: nameW }}>
+                Name
+                <NameResizer onNameW={onNameW} />
+              </th>
               <th>Max A</th>
               <th title="Power at max current">kW</th>
               <th>Circuit</th>
@@ -212,6 +309,7 @@ function PanelLoads({
                       <span className="name-wrap">
                         <input
                           value={l.name}
+                          title={l.name || undefined}
                           placeholder="Circuit name"
                           aria-label="Circuit name"
                           onChange={(e) => update(l.id, { name: e.target.value })}

@@ -4,7 +4,7 @@ import { defaultState, exportFile, initialState, parseFile, persist, reducer, sh
 import { derive } from './lib/derive';
 import { isOverloaded, optimizePreview, overloadAdvice } from './lib/advice';
 import { optimizeAll } from './lib/optimize';
-import { exportPdf } from './lib/pdf';
+import { exportPdf, exportPlanPdf } from './lib/pdf';
 import { MODE_LABEL, MODE_PHASES } from './lib/nec';
 import { fmtA } from './lib/sizing';
 import { ServiceConfig } from './components/ServiceConfig';
@@ -138,10 +138,17 @@ export default function App() {
           </button>
           <button
             className="btn"
-            onClick={() => exportPdf(state, derived)}
-            title="Download a printable circuit directory (one letter page per panel)"
+            onClick={() => exportPlanPdf(state, derived)}
+            title="Download the full circuit plan: every circuit with its breaker, wire and ground sizes"
           >
-            Export PDF
+            Plan PDF
+          </button>
+          <button
+            className="btn"
+            onClick={() => exportPdf(state, derived)}
+            title="Download printable circuit directories for the panel doors (one letter page per panel)"
+          >
+            Panel PDFs
           </button>
           <button className="btn" onClick={() => exportFile(state)} title="Download this design as a .json file">
             Save file

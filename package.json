@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "node scripts/test.mjs run"
   },
   "dependencies": {
     "jspdf": "^4.2.1",

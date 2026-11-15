@@ -1,8 +1,8 @@
 import type { jsPDF } from 'jspdf';
 import type { AppState, Load, Panel } from '../types';
 import type { Derived } from './derive';
-import { maxPhase } from './loadCalc';
-import { formatWire, MODE_LABEL, MODE_PHASES, phaseOfSlot } from './nec';
+import { circuitAmps, maxPhase } from './loadCalc';
+import { formatWire, KINDS, MODE_LABEL, MODE_PHASES, phaseOfSlot } from './nec';
 import { fmtA, fmtKw } from './sizing';
 
 // US Letter in points.
@@ -12,9 +12,10 @@ const MARGIN = 36;
 const CONTENT_W = PAGE_W - 2 * MARGIN;
 
 // Directory columns, mirrored around the phase column so circuit numbers sit
-// next to the bus like the breakers themselves.
-const COL = { ckt: 24, brkr: 48, wire: 44, ph: 22 };
-const DESC_W = (CONTENT_W - COL.ph - 2 * (COL.ckt + COL.brkr + COL.wire)) / 2;
+// next to the bus like the breakers themselves. Wire sizes live in the full
+// circuit plan, so the description gets the room.
+const COL = { ckt: 24, brkr: 48, ph: 22 };
+const DESC_W = (CONTENT_W - COL.ph - 2 * (COL.ckt + COL.brkr)) / 2;
 
 const HEADER_H = 74;
 const TABLE_HEAD_H = 16;
@@ -31,26 +32,23 @@ const latin1 = (s: string) => s.replace(/[^\x20-\xff]/g, '?');
 interface Side {
   /** x of each column's left edge, in reading order. */
   desc: number;
-  wire: number;
   brkr: number;
   ckt: number;
 }
 
 const LEFT: Side = {
   desc: MARGIN,
-  wire: MARGIN + DESC_W,
-  brkr: MARGIN + DESC_W + COL.wire,
-  ckt: MARGIN + DESC_W + COL.wire + COL.brkr,
+  brkr: MARGIN + DESC_W,
+  ckt: MARGIN + DESC_W + COL.brkr,
 };
 const PH_X = LEFT.ckt + COL.ckt;
 const RIGHT: Side = {
   ckt: PH_X + COL.ph,
   brkr: PH_X + COL.ph + COL.ckt,
-  wire: PH_X + COL.ph + COL.ckt + COL.brkr,
-  desc: PH_X + COL.ph + COL.ckt + COL.brkr + COL.wire,
+  desc: PH_X + COL.ph + COL.ckt + COL.brkr,
 };
 const SIDE_X0 = (side: Side) => Math.min(side.desc, side.ckt);
-const SIDE_W = DESC_W + COL.wire + COL.brkr + COL.ckt;
+const SIDE_W = DESC_W + COL.brkr + COL.ckt;
 
 /** Draw text centered in a box, shrinking then wrapping (then truncating) to fit. */
 function fitText(
@@ -130,7 +128,6 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
   doc.setFillColor(235, 235, 235).rect(MARGIN, tableTop, CONTENT_W, TABLE_HEAD_H, 'F');
   const head = (side: Side) => {
     fitText(doc, 'DESCRIPTION', side.desc, tableTop, DESC_W, TABLE_HEAD_H, { size: 7, bold: true });
-    fitText(doc, 'WIRE (CU)', side.wire, tableTop, COL.wire, TABLE_HEAD_H, { size: 6.5, bold: true });
     fitText(doc, 'BRKR', side.brkr, tableTop, COL.brkr, TABLE_HEAD_H, { size: 7, bold: true });
     fitText(doc, 'CKT', side.ckt, tableTop, COL.ckt, TABLE_HEAD_H, { size: 7, bold: true });
   };
@@ -145,10 +142,6 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
   const breakerText = (l: Load, poles: number) => {
     const s = d.sizing.get(l.id)!;
     return s.breaker ? `${s.breaker}A${poles > 1 ? ` ${poles}P` : ''}` : '';
-  };
-  const wireText = (l: Load) => {
-    const s = d.sizing.get(l.id)!;
-    return s.cu ? formatWire(s.cu).replace(' kcmil', 'k') : '';
   };
 
   doc.setLineWidth(0.5);
@@ -190,7 +183,6 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
         }
       }
       doc.rect(side.desc, y, DESC_W, h);
-      doc.rect(side.wire, y, COL.wire, h);
       doc.rect(side.brkr, y, COL.brkr, h);
       if (!occ.length) continue;
 
@@ -199,7 +191,6 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
         const isFeeder = d.feederOf.has(l.id);
         fitText(doc, describe(l), side.desc, y, DESC_W, h, { size: font + 0.5, bold: isFeeder, align: 'left' });
         fitText(doc, breakerText(l, span), side.brkr, y, COL.brkr, h, { size: font, bold: true });
-        fitText(doc, wireText(l), side.wire, y, COL.wire, h, { size: font });
         if (multi) {
           // Handle tie between poles.
           doc.setDrawColor(INK).setLineWidth(1.2);
@@ -211,16 +202,13 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
         // Tandem: two half-height circuits in one space.
         doc.setDrawColor(200);
         doc.line(side.desc, y + rowH / 2, side.desc + DESC_W, y + rowH / 2);
-        // Breaker and wire columns sit in mirrored order on each side.
-        const x0 = Math.min(side.wire, side.brkr);
-        doc.line(x0, y + rowH / 2, x0 + COL.wire + COL.brkr, y + rowH / 2);
+        doc.line(side.brkr, y + rowH / 2, side.brkr + COL.brkr, y + rowH / 2);
         occ.forEach((id) => {
           const l = loads.get(id)!;
           const hh = rowH / 2;
           const hy = layout.placements.get(id)!.half === 'B' ? y + hh : y;
           fitText(doc, describe(l), side.desc, hy, DESC_W, hh, { size: font - 0.5, align: 'left' });
           fitText(doc, breakerText(l, 1), side.brkr, hy, COL.brkr, hh, { size: font - 0.5, bold: true });
-          fitText(doc, wireText(l), side.wire, hy, COL.wire, hh, { size: font - 0.5 });
         });
       }
     }
@@ -257,15 +245,200 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
   fy += rowsOut.length * 13 + 4;
   doc.setFontSize(7).setTextColor(FAINT);
   const notes = doc.splitTextToSize(
-    'Breakers and wire are sized for 125% of continuous load plus 100% of the rest (a sizing margin, not extra current). ' +
-      'Wire is copper THHN sized to the breaker at the 75 °C terminal rating (NEC 110.14(C), 240.4(D)); derate for ' +
-      'ambient temperature, conduit fill, and voltage drop as needed. Max load counts every circuit at its max current; ' +
+    'Breakers are sized for 125% of continuous load plus 100% of the rest (a sizing margin, not extra current). ' +
+      'Wire and ground sizes are in the full circuit plan. Max load counts every circuit at its max current; ' +
       'downstream subpanels are included. ' +
       'Planning aid only: verify with your AHJ and a licensed electrician.',
     CONTENT_W,
   ) as string[];
   doc.text(notes, MARGIN, fy);
   doc.text('Made with Circuit Planner  ·  mechfi-designs.github.io/circuit-planner', MARGIN, PAGE_H - MARGIN + 10);
+}
+
+// ---------- full circuit plan ----------
+
+interface PlanCol {
+  key: 'ckt' | 'desc' | 'circuit' | 'ph' | 'load' | 'sizing' | 'brkr' | 'wire' | 'egc';
+  head: string;
+  w: number;
+  align?: 'left' | 'center';
+}
+
+const PLAN_FIXED: PlanCol[] = [
+  { key: 'ckt', head: 'CKT', w: 40 },
+  { key: 'desc', head: 'DESCRIPTION', w: 0, align: 'left' },
+  { key: 'circuit', head: 'CIRCUIT', w: 50 },
+  { key: 'ph', head: 'PHASE', w: 38 },
+  { key: 'load', head: 'LOAD A', w: 40 },
+  { key: 'sizing', head: 'SIZING A', w: 44 },
+  { key: 'brkr', head: 'BREAKER', w: 50 },
+  { key: 'wire', head: 'WIRE (CU THHN)', w: 64 },
+  { key: 'egc', head: 'GROUND (CU)', w: 50 },
+];
+PLAN_FIXED[1].w = CONTENT_W - PLAN_FIXED.reduce((a, c) => a + c.w, 0);
+const PLAN_COLS = PLAN_FIXED.map((c, i) => ({
+  ...c,
+  x: MARGIN + PLAN_FIXED.slice(0, i).reduce((a, cc) => a + cc.w, 0),
+}));
+const PLAN_FONT = 8;
+const PLAN_LINE = PLAN_FONT * 1.2;
+const PLAN_HEAD_H = 18;
+const PLAN_BOTTOM = PAGE_H - MARGIN - 14;
+
+export type PlanRow = Record<PlanCol['key'], string> & { bold: boolean; unplaced: boolean };
+
+/** One row per circuit in a panel, in slot order, with breaker, wire and ground sizes. */
+export function planRows(state: AppState, d: Derived, panel: Panel): PlanRow[] {
+  const layout = d.layouts.get(panel.id)!;
+  const loads = state.loads.filter((l) => l.panelId === panel.id);
+  const order = (l: Load) => {
+    const p = layout.placements.get(l.id);
+    return p ? p.slot * 2 + (p.half === 'B' ? 1 : 0) : Infinity;
+  };
+  return [...loads]
+    .sort((a, b) => order(a) - order(b))
+    .map((l) => {
+      const s = d.sizing.get(l.id)!;
+      const p = layout.placements.get(l.id);
+      const sub = d.feederOf.get(l.id);
+      const kind = KINDS[l.kind];
+      const load = sub ? maxPhase(d.totals.get(sub.id)!.max, state.mode) : circuitAmps(l).max;
+      const extra =
+        l.equip === 'motor' && l.hp
+          ? ` (${l.hp} hp motor)`
+          : l.equip === 'hvac' && l.mca
+            ? ` (HVAC, ${l.mca} A MCA)`
+            : '';
+      return {
+        ckt: p ? (p.tandem ? `${p.slot}${p.half}` : p.slots.join(',')) : 'none',
+        desc: sub ? `${sub.name} (subpanel feeder)` : `${l.name || 'Unnamed'}${extra}`,
+        circuit: `${kind.volts} V ${kind.poles}P`,
+        ph: p ? p.phases.join('') : '',
+        load: load > 0 ? fmtA(load) : '',
+        sizing: s.required > 0 ? fmtA(s.required) : '',
+        brkr: s.breaker ? `${s.breaker} A` : '',
+        wire: s.cu ? formatWire(s.cu) : '',
+        egc: s.egc ?? '',
+        bold: !!sub,
+        unplaced: !p,
+      };
+    });
+}
+
+function drawPlanHead(doc: jsPDF, y: number) {
+  doc.setFillColor(235, 235, 235).rect(MARGIN, y, CONTENT_W, PLAN_HEAD_H, 'F');
+  for (const c of PLAN_COLS) fitText(doc, c.head, c.x, y, c.w, PLAN_HEAD_H, { size: 6.5, bold: true, align: c.align });
+  return y + PLAN_HEAD_H;
+}
+
+function drawPlan(doc: jsPDF, state: AppState, d: Derived) {
+  const { mode } = state;
+  const phases = MODE_PHASES[mode];
+  const perPhase = (amps: Record<string, number>) => phases.map((p) => `${p} ${fmtA(amps[p])} A`).join('   ');
+  const nPanels = state.panels.length;
+
+  // ---------- title ----------
+  doc.setTextColor(INK).setFont('helvetica', 'bold').setFontSize(22);
+  doc.text('Circuit Plan', MARGIN, MARGIN + 18);
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(FAINT);
+  doc.text(`Updated ${new Date().toISOString().slice(0, 10)}`, PAGE_W - MARGIN, MARGIN + 8, { align: 'right' });
+  doc.setTextColor(INK).setFontSize(10.5);
+  const svcMax = maxPhase(d.service.max, mode);
+  const svcPct = state.serviceA ? ` (${Math.round((svcMax / state.serviceA) * 100)}% of service)` : '';
+  const svc = state.serviceA ? `${state.serviceA} A service` : 'Service';
+  doc.text(latin1(`${MODE_LABEL[mode]}  ·  ${svc}  ·  ${nPanels} panel${nPanels > 1 ? 's' : ''}`), MARGIN, MARGIN + 38);
+  doc.text(
+    latin1(`Service max load: ${perPhase(d.service.max)}${svcPct}  ·  ${fmtKw(d.serviceKw.max)} kW`),
+    MARGIN,
+    MARGIN + 53,
+  );
+  let y = MARGIN + 66;
+
+  const newPage = () => {
+    doc.addPage('letter', 'portrait');
+    return MARGIN;
+  };
+
+  for (const panel of state.panels) {
+    const rows = planRows(state, d, panel);
+    const parent = state.panels.find((p) => p.id === panel.fedFrom);
+    const totals = d.totals.get(panel.id)!;
+    const pmax = maxPhase(totals.max, mode);
+    const pct = panel.mainA ? ` (${Math.round((pmax / panel.mainA) * 100)}% of rating)` : '';
+    const fed = parent ? `${panel.mainA} A feeder from ${parent.name}` : `${panel.mainA} A main, fed from service`;
+    const line1 = `${fed}  ·  ${panel.spaces} spaces  ·  ${rows.length} circuit${rows.length === 1 ? '' : 's'}`;
+    const line2 = `Max load ${perPhase(totals.max)}${pct}  ·  ${fmtKw(d.kw.get(panel.id)!.max)} kW`;
+
+    // Keep the panel heading with its column heads and at least two rows.
+    if (y + 48 + PLAN_HEAD_H + 32 > PLAN_BOTTOM) y = newPage();
+    y += 8;
+    doc.setTextColor(INK).setFont('helvetica', 'bold').setFontSize(13);
+    doc.text(latin1(panel.name || 'Panel'), MARGIN, y + 10);
+    doc.setFont('helvetica', 'normal').setFontSize(8.5);
+    doc.text(latin1(line1), MARGIN, y + 23);
+    doc.text(latin1(line2), MARGIN, y + 34);
+    y = drawPlanHead(doc, y + 40);
+
+    if (!rows.length) {
+      fitText(doc, 'No circuits', MARGIN, y, CONTENT_W, 16, { size: PLAN_FONT, color: FAINT, align: 'left' });
+      y += 16;
+    }
+    rows.forEach((r, i) => {
+      doc.setFont('helvetica', r.bold ? 'bold' : 'normal').setFontSize(PLAN_FONT);
+      const lines = Math.min(4, (doc.splitTextToSize(latin1(r.desc), PLAN_COLS[1].w - 6) as string[]).length);
+      const h = Math.max(16, lines * PLAN_LINE + 5);
+      if (y + h > PLAN_BOTTOM) y = drawPlanHead(doc, newPage());
+      if (i % 2) doc.setFillColor(246, 246, 246).rect(MARGIN, y, CONTENT_W, h, 'F');
+      doc.setDrawColor(GRID).setLineWidth(0.4).line(MARGIN, y + h, MARGIN + CONTENT_W, y + h);
+      for (const c of PLAN_COLS) {
+        fitText(doc, r[c.key], c.x, y, c.w, h, {
+          size: PLAN_FONT,
+          bold: c.key === 'brkr' || c.key === 'ckt' || r.bold,
+          align: c.align,
+          color: r.unplaced && c.key === 'ckt' ? 170 : INK,
+        });
+      }
+      y += h;
+    });
+    y += 12;
+  }
+
+  // ---------- notes ----------
+  doc.setFont('helvetica', 'normal').setFontSize(7);
+  const notes = doc.splitTextToSize(
+    "Load A is max current (for a subpanel feeder, the subpanel's max phase load). Sizing A is 125% of continuous load " +
+      'plus 100% of the rest (motors: 125% of full-load current; HVAC: nameplate MCA); it is a sizing margin, not extra ' +
+      'current. Breakers are the smallest NEC 240.6(A) standard size that fits unless overridden. Wire is copper THHN at ' +
+      'the 75 °C terminal rating (NEC 110.14(C), 240.4(B), 240.4(D)); ground is copper per Table 250.122. Does not ' +
+      'include ambient or conduit-fill derating, voltage drop, or demand factors. CKT "none" means the circuit does not ' +
+      'fit in its panel. Planning aid only: verify with your AHJ and a licensed electrician.',
+    CONTENT_W,
+  ) as string[];
+  if (y + notes.length * 9 > PLAN_BOTTOM) y = newPage();
+  doc.setTextColor(FAINT).text(notes, MARGIN, y + 4);
+
+  // ---------- page footers ----------
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(FAINT);
+    doc.text('Made with Circuit Planner  ·  mechfi-designs.github.io/circuit-planner', MARGIN, PAGE_H - MARGIN + 10);
+    doc.text(`Page ${i} of ${n}`, PAGE_W - MARGIN, PAGE_H - MARGIN + 10, { align: 'right' });
+  }
+}
+
+/** Build the full circuit plan: every circuit with its breaker, wire and ground sizes. */
+export async function buildPlanPdf(state: AppState, derived: Derived): Promise<jsPDF> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
+  drawPlan(doc, state, derived);
+  doc.setProperties({ title: 'Circuit plan', creator: 'Circuit Planner' });
+  return doc;
+}
+
+export async function exportPlanPdf(state: AppState, derived: Derived): Promise<void> {
+  const doc = await buildPlanPdf(state, derived);
+  doc.save(`circuit-plan-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 /** Build a letter-size PDF with one circuit directory page per panel. */

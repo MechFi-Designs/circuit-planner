@@ -414,12 +414,45 @@ td.center {
   width: 100%;
 }
 
+.loads th.name-col {
+  position: relative;
+}
+
+/* Drag handle on the right edge of the Name header. */
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.col-resize::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: 1px;
+  background: var(--border);
+}
+
+.col-resize:hover::after,
+.col-resize:active::after {
+  background: var(--accent);
+  width: 2px;
+  left: 3px;
+}
+
 .loads input.amps {
   width: 64px;
 }
 
 .slot-select {
-  width: 96px;
+  width: 108px;
 }
 
 .nowrap {
@@ -1011,7 +1044,7 @@ td.center {
 
 /* ---------- breaker override / equipment ---------- */
 .breaker-select {
-  width: 84px;
+  width: 100px;
   font-weight: 600;
 }
 
