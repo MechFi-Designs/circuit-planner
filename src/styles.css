@@ -310,14 +310,56 @@ h3 {
 /* ---------- layout ---------- */
 .layout {
   display: grid;
-  grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
+  /* --left-w is set when the user drags the divider. */
+  grid-template-columns: var(--left-w, minmax(340px, 440px)) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+}
+
+.col-left {
+  position: relative;
+  min-width: 0;
+  align-self: stretch;
+}
+
+/* Divider between the panel previews and the load table, centered in the gap. */
+.col-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -11px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+
+.col-splitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+  opacity: 0.6;
+  transition: background 0.15s;
+}
+
+.col-splitter:hover::after,
+.col-splitter:active::after {
+  background: var(--accent);
+  opacity: 1;
 }
 
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .col-splitter {
+    display: none;
   }
 }
 

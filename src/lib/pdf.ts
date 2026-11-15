@@ -1,5 +1,5 @@
 import type { jsPDF } from 'jspdf';
-import type { AppState, Load, Panel } from '../types';
+import type { AppState, Load, Panel, Phase } from '../types';
 import type { Derived } from './derive';
 import { circuitAmps, maxPhase } from './loadCalc';
 import { formatWire, KINDS, MODE_LABEL, MODE_PHASES, phaseOfSlot } from './nec';
@@ -90,6 +90,57 @@ function fitText(
   });
 }
 
+/** Phase colors, matching the app's light theme (A black, B red, C blue). */
+const PHASE_RGB: Record<Phase, [number, number, number]> = {
+  A: [31, 35, 40],
+  B: [217, 58, 58],
+  C: [47, 111, 223],
+};
+
+/** A rounded, colored phase chip like the app's, centered on (cx, cy). */
+function phaseChip(doc: jsPDF, phase: Phase, cx: number, cy: number, h: number) {
+  const w = h + 2;
+  doc.setFillColor(...PHASE_RGB[phase]);
+  doc.roundedRect(cx - w / 2, cy - h / 2, w, h, h * 0.25, h * 0.25, 'F');
+  doc.setFont('helvetica', 'bold').setFontSize(h * 0.68).setTextColor(255);
+  doc.text(phase, cx, cy + h * 0.24, { align: 'center' });
+}
+
+/** Chips for several phases (e.g. a 3-pole breaker's ABC), centered in a box. */
+function phaseChips(doc: jsPDF, phases: Phase[], x: number, y: number, w: number, h: number, size: number) {
+  const chipW = size + 2;
+  const gap = 2;
+  const total = phases.length * chipW + (phases.length - 1) * gap;
+  let cx = x + (w - total) / 2 + chipW / 2;
+  for (const p of phases) {
+    phaseChip(doc, p, cx, y + h / 2, size);
+    cx += chipW + gap;
+  }
+}
+
+/** Write "[A] 12 A  [B] 10 A ..." with colored chips at baseline y, then `rest`. */
+function phaseLoads(
+  doc: jsPDF,
+  phases: Phase[],
+  amps: Record<string, number>,
+  rest: string,
+  x: number,
+  y: number,
+  size: number,
+) {
+  const h = size + 1.5;
+  let cx = x;
+  for (const p of phases) {
+    phaseChip(doc, p, cx + (h + 2) / 2, y - size * 0.34, h);
+    cx += h + 2 + 3;
+    const t = `${fmtA(amps[p])} A`;
+    doc.setFont('helvetica', 'normal').setFontSize(size).setTextColor(INK);
+    doc.text(t, cx, y);
+    cx += doc.getTextWidth(t) + 8;
+  }
+  if (rest) doc.text(latin1(rest), cx - 6, y);
+}
+
 function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
   const { mode } = state;
   const layout = d.layouts.get(panel.id)!;
@@ -149,7 +200,7 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
     const y = rowY(r);
     // Phase column.
     doc.setDrawColor(GRID).rect(PH_X, y, COL.ph, rowH);
-    fitText(doc, phaseOfSlot(2 * r + 1, mode), PH_X, y, COL.ph, rowH, { size: font, bold: true });
+    phaseChip(doc, phaseOfSlot(2 * r + 1, mode), PH_X + COL.ph / 2, y + rowH / 2, Math.min(14, rowH - 4));
 
     for (const [side, space] of [
       [LEFT, 2 * r + 1],
@@ -226,23 +277,23 @@ function drawPanelPage(doc: jsPDF, state: AppState, d: Derived, panel: Panel) {
   const kw = d.kw.get(panel.id)!;
   const phases = MODE_PHASES[mode];
   const pct = (a: number) => (panel.mainA ? ` (${Math.round((a / panel.mainA) * 100)}% of ${rating})` : '');
-  const perPhase = (amps: Record<string, number>) => phases.map((p) => `${p} ${fmtA(amps[p])} A`).join('   ');
   let fy = tableBottom + 18;
-  doc.setTextColor(INK).setFont('helvetica', 'bold').setFontSize(9);
   const sizing = maxPhase(totals.design, mode);
-  const rowsOut: [string, string][] = [
-    ['Max load', `${perPhase(totals.max)}${pct(maxPhase(totals.max, mode))}  ·  ${fmtKw(kw.max)} kW`],
-    ['Estimated load', `${perPhase(totals.est)}${pct(maxPhase(totals.est, mode))}  ·  ${fmtKw(kw.est)} kW`],
+  const rowsOut: [string, Record<string, number> | null, string][] = [
+    ['Max load', totals.max, `${pct(maxPhase(totals.max, mode))}  ·  ${fmtKw(kw.max)} kW`],
+    ['Estimated load', totals.est, `${pct(maxPhase(totals.est, mode))}  ·  ${fmtKw(kw.est)} kW`],
   ];
   if (sizing > maxPhase(totals.max, mode) + 0.05) {
-    rowsOut.push(['Sizing load', `${fmtA(sizing)} A${pct(sizing)}  ·  continuous loads at 125%`]);
+    rowsOut.push(['Sizing load', null, `${fmtA(sizing)} A${pct(sizing)}  ·  continuous loads at 125%`]);
   }
-  rowsOut.forEach(([label, text], i) => {
-    doc.setFont('helvetica', 'bold').text(label, MARGIN, fy + i * 13);
-    doc.setFont('helvetica', 'normal').text(latin1(text), MARGIN + 80, fy + i * 13);
+  rowsOut.forEach(([label, amps, text], i) => {
+    const ly = fy + i * 14;
+    doc.setTextColor(INK).setFont('helvetica', 'bold').setFontSize(9).text(label, MARGIN, ly);
+    if (amps) phaseLoads(doc, phases, amps, text, MARGIN + 80, ly, 9);
+    else doc.setFont('helvetica', 'normal').text(latin1(text), MARGIN + 80, ly);
   });
 
-  fy += rowsOut.length * 13 + 4;
+  fy += rowsOut.length * 14 + 4;
   doc.setFontSize(7).setTextColor(FAINT);
   const notes = doc.splitTextToSize(
     'Breakers are sized for 125% of continuous load plus 100% of the rest (a sizing margin, not extra current). ' +
@@ -334,7 +385,6 @@ function drawPlanHead(doc: jsPDF, y: number) {
 function drawPlan(doc: jsPDF, state: AppState, d: Derived) {
   const { mode } = state;
   const phases = MODE_PHASES[mode];
-  const perPhase = (amps: Record<string, number>) => phases.map((p) => `${p} ${fmtA(amps[p])} A`).join('   ');
   const nPanels = state.panels.length;
 
   // ---------- title ----------
@@ -347,11 +397,10 @@ function drawPlan(doc: jsPDF, state: AppState, d: Derived) {
   const svcPct = state.serviceA ? ` (${Math.round((svcMax / state.serviceA) * 100)}% of service)` : '';
   const svc = state.serviceA ? `${state.serviceA} A service` : 'Service';
   doc.text(latin1(`${MODE_LABEL[mode]}  ·  ${svc}  ·  ${nPanels} panel${nPanels > 1 ? 's' : ''}`), MARGIN, MARGIN + 38);
-  doc.text(
-    latin1(`Service max load: ${perPhase(d.service.max)}${svcPct}  ·  ${fmtKw(d.serviceKw.max)} kW`),
-    MARGIN,
-    MARGIN + 53,
-  );
+  const svcLabel = 'Service max load:';
+  doc.text(svcLabel, MARGIN, MARGIN + 53);
+  const svcX = MARGIN + doc.getTextWidth(svcLabel) + 6;
+  phaseLoads(doc, phases, d.service.max, `${svcPct}  ·  ${fmtKw(d.serviceKw.max)} kW`, svcX, MARGIN + 53, 10.5);
   let y = MARGIN + 66;
 
   const newPage = () => {
@@ -367,7 +416,7 @@ function drawPlan(doc: jsPDF, state: AppState, d: Derived) {
     const pct = panel.mainA ? ` (${Math.round((pmax / panel.mainA) * 100)}% of rating)` : '';
     const fed = parent ? `${panel.mainA} A feeder from ${parent.name}` : `${panel.mainA} A main, fed from service`;
     const line1 = `${fed}  ·  ${panel.spaces} spaces  ·  ${rows.length} circuit${rows.length === 1 ? '' : 's'}`;
-    const line2 = `Max load ${perPhase(totals.max)}${pct}  ·  ${fmtKw(d.kw.get(panel.id)!.max)} kW`;
+    const line2 = `${pct}  ·  ${fmtKw(d.kw.get(panel.id)!.max)} kW`;
 
     // Keep the panel heading with its column heads and at least two rows.
     if (y + 48 + PLAN_HEAD_H + 32 > PLAN_BOTTOM) y = newPage();
@@ -376,7 +425,9 @@ function drawPlan(doc: jsPDF, state: AppState, d: Derived) {
     doc.text(latin1(panel.name || 'Panel'), MARGIN, y + 10);
     doc.setFont('helvetica', 'normal').setFontSize(8.5);
     doc.text(latin1(line1), MARGIN, y + 23);
-    doc.text(latin1(line2), MARGIN, y + 34);
+    doc.text('Max load', MARGIN, y + 35);
+    phaseLoads(doc, phases, totals.max, line2, MARGIN + doc.getTextWidth('Max load') + 5, y + 35, 8.5);
+    doc.setTextColor(INK);
     y = drawPlanHead(doc, y + 40);
 
     if (!rows.length) {
@@ -391,6 +442,10 @@ function drawPlan(doc: jsPDF, state: AppState, d: Derived) {
       if (i % 2) doc.setFillColor(246, 246, 246).rect(MARGIN, y, CONTENT_W, h, 'F');
       doc.setDrawColor(GRID).setLineWidth(0.4).line(MARGIN, y + h, MARGIN + CONTENT_W, y + h);
       for (const c of PLAN_COLS) {
+        if (c.key === 'ph') {
+          phaseChips(doc, r.ph.split('') as Phase[], c.x, y, c.w, h, 10);
+          continue;
+        }
         fitText(doc, r[c.key], c.x, y, c.w, h, {
           size: PLAN_FONT,
           bold: c.key === 'brkr' || c.key === 'ckt' || r.bold,

@@ -37,7 +37,7 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
   - **HVAC (NEC 440):** enter the nameplate MCA and MOCP. Wire is sized to the MCA, and the breaker can't go above the MOCP.
 - **Breaker override:** the Breaker column is a dropdown. Leave it on Auto, or pick the breaker that's installed or specified. Warnings flag a breaker below the load, above a motor's 430.52 maximum or an HVAC unit's MOCP, or below its MCA.
 - **Automatic sizing:** for each circuit, the breaker, the copper THHN wire, the copper equipment ground (EGC), and its kW.
-- **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows.
+- **Visual panel:** circuits fill slots automatically. You can pin any circuit to a slot, and multi-pole breakers span adjacent rows. Drag the divider between the panel previews and the load table to widen the previews and see full circuit names; double-click it to reset.
 - **⚖ Optimize:** moves unlocked circuits between slots to even out the worst-case current on each phase. Locked circuits (🔒) stay where they are.
   - **Balance on** picks which current Optimize evens out across phases. **Max load** uses nameplate current. **Estimated load** uses each circuit's Est. A, which suits equipment that rarely runs near nameplate, like CNC machines on drives. Rating checks always use the sizing load.
   - With **Move circuits between panels** turned on, it can also move circuits to another panel, but only when that takes load off something. Its priorities, in order:
@@ -51,7 +51,7 @@ Plan an electrical panel in your browser. Pick the service, lay out your panels,
   - **Estimated** uses your Est. A figures, or max current where you left Est. A blank, to show realistic loading.
   - **Sizing** counts continuous loads at 125%. It isn't extra current; it's what breakers, wire, mains, feeders and the service must be rated for. It's shown separately and only when it differs from max load.
   - Phase balancing uses real current. Rating checks use the sizing load.
-- **Circuit plan PDF:** **Plan PDF** downloads the full plan as a table, grouped by panel in slot order. Each circuit shows its circuit number, description, voltage and poles, phase, load and sizing current, and the breaker, copper THHN wire and copper ground sizes. Long plans continue onto more pages, with the column headings repeated.
+- **Circuit plan PDF:** **Plan PDF** downloads the full plan as a table, grouped by panel in slot order. Each circuit shows its circuit number, description, voltage and poles, phase, load and sizing current, and the breaker, copper THHN wire and copper ground sizes. Long plans continue onto more pages, with the column headings repeated. Phases are shown as colored chips matching the app (A black, B red, C blue), here and on the panel directories.
 - **Printable panel directories:** **Panel PDFs** downloads a letter-size circuit directory with one page per panel, ready to print and tape inside the panel door. Each panel card also has a **PDF** button for just that panel.
   - The page mirrors the panel: odd circuits on the left, even on the right, numbers next to the phase column, multi-pole breakers merged with a tie bar, and tandems split into A/B.
   - Each circuit shows its description and breaker. Wire sizes are left to the plan PDF, so long descriptions have room.

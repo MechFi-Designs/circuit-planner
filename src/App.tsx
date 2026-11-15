@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { ServiceMode } from './types';
 import { defaultState, exportFile, initialState, parseFile, persist, reducer, shareUrl } from './state';
 import { derive } from './lib/derive';
@@ -28,6 +28,18 @@ function readTab(): Tab {
   }
 }
 
+const LEFT_W_KEY = 'circuit-planner:left-w';
+const LEFT_MIN = 300;
+/** Panel-preview column width the user dragged to, or null for the default. */
+function readLeftW(): number | null {
+  try {
+    const v = Number(localStorage.getItem(LEFT_W_KEY));
+    return v >= LEFT_MIN ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 // Read once: initialState() consumes the share-link hash, and StrictMode calls reducer initializers twice.
 const bootState = initialState();
 
@@ -49,6 +61,20 @@ export default function App() {
   };
 
   useEffect(() => persist(state), [state]);
+
+  // Drag the divider between the panel previews and the load table; double-click resets it.
+  const [leftW, setLeftW] = useState<number | null>(readLeftW);
+  const leftCol = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; w: number } | null>(null);
+  useEffect(() => {
+    try {
+      if (leftW == null) localStorage.removeItem(LEFT_W_KEY);
+      else localStorage.setItem(LEFT_W_KEY, String(leftW));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [leftW]);
+  const clampLeft = (w: number) => Math.round(Math.max(LEFT_MIN, Math.min(w, window.innerWidth - 420)));
 
   const derived = useMemo(() => derive(state), [state]);
   const advice = useMemo(() => overloadAdvice(state, derived, optimizePreview(state, derived)), [state, derived]);
@@ -228,8 +254,30 @@ export default function App() {
         />
       )}
 
-      <main className="layout" hidden={tab !== 'panels'}>
-        <div className="col-left">
+      <main
+        className="layout"
+        hidden={tab !== 'panels'}
+        style={leftW ? ({ '--left-w': `${leftW}px` } as CSSProperties) : undefined}
+      >
+        <div className="col-left" ref={leftCol}>
+          <div
+            className="col-splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panel previews"
+            title="Drag to resize the panel previews · double-click to reset"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              drag.current = { x: e.clientX, w: leftCol.current?.getBoundingClientRect().width ?? 440 };
+            }}
+            onPointerMove={(e) => {
+              if (drag.current) setLeftW(clampLeft(drag.current.w + e.clientX - drag.current.x));
+            }}
+            onPointerUp={() => (drag.current = null)}
+            onPointerCancel={() => (drag.current = null)}
+            onDoubleClick={() => setLeftW(null)}
+          />
           <ServiceConfig state={state} dispatch={dispatch} />
           {state.panels.map((p) => (
             <PanelDiagram
