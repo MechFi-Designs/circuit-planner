@@ -98,6 +98,20 @@ export class Board {
     this.circuits -= poles;
   }
 
+  /** Spaces with nothing in them. */
+  emptySpaces(): number {
+    let n = 0;
+    for (let s = 1; s <= this.spaces; s++) if (this.isEmpty(s)) n++;
+    return n;
+  }
+
+  /** Tandem spaces with one tandem circuit and room for a second. */
+  openHalves(): number {
+    let n = 0;
+    for (let s = 1; s <= this.spaces; s++) if (this.canPlace(s, 1, true)) n++;
+    return n;
+  }
+
   occupants(space: number): string[] {
     const m = this.multi.get(space);
     return m ? [m] : (this.singles.get(space) ?? []);

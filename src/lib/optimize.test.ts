@@ -28,10 +28,10 @@ const load = (kind: LoadKind, amps: number, extra: Partial<Load> = {}): Load => 
   ...extra,
 });
 
-function run(loads: Load[], mode: ServiceMode) {
-  const res = optimizePanel(panel, loads, mode, layoutPanel(panel, loads, mode));
+function run(loads: Load[], mode: ServiceMode, p: Panel = panel) {
+  const res = optimizePanel(p, loads, mode, layoutPanel(p, loads, mode));
   const applied = loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l));
-  const after = phaseTotals(applied, layoutPanel(panel, applied, mode).placements).max;
+  const after = phaseTotals(applied, layoutPanel(p, applied, mode).placements).max;
   return { res, after, applied };
 }
 
@@ -87,16 +87,51 @@ describe('optimizePanel', () => {
     expect(run(applied, 'three').res.changed).toBe(false);
   });
 
-  it('keeps tandem circuits paired and balances the pairs', () => {
+  it('pairs tandem circuits when the panel is tight, and still balances', () => {
+    // 5 spaces for 6 tandem + 2 regular circuits: every tandem must pair up.
+    const tight: Panel = { ...panel, spaces: 5, maxCircuits: 10 };
+    const twins = [20, 20, 12, 12, 8, 8].map((a) => load('120-1p', a, { tandem: true }));
+    const regular = [load('120-1p', 16), load('120-1p', 16)];
+    const loads = [...twins, ...regular];
+    const res = optimizePanel(tight, loads, 'split', layoutPanel(tight, loads, 'split'));
+    const applied = loads.map((l) => (res.slots.has(l.id) ? { ...l, slot: res.slots.get(l.id)! } : l));
+    const lay = layoutPanel(tight, applied, 'split');
+    expect(lay.unplaced).toEqual([]);
+    expect(new Set(twins.map((l) => lay.placements.get(l.id)!.slot)).size).toBe(3);
+    const after = phaseTotals(applied, lay.placements).max;
+    expect(Math.max(after.A, after.B)).toBeLessThanOrEqual(64);
+  });
+
+  it('with spare spaces, tandem circuits can start a new tandem to balance; regular circuits never share', () => {
     const twins = [20, 20, 12, 12, 8, 8].map((a) => load('120-1p', a, { tandem: true }));
     const regular = [load('120-1p', 16), load('120-1p', 16)];
     const { applied, after } = run([...twins, ...regular], 'split');
     const lay = layoutPanel(panel, applied, 'split');
-    const spaceOf = (l: Load) => lay.placements.get(l.id)!.slot;
-    // 6 tandem circuits share 3 spaces; regular circuits never share.
-    expect(new Set(twins.map(spaceOf)).size).toBe(3);
-    for (const r of regular) expect(lay.spaceMap.get(spaceOf(r))).toHaveLength(1);
+    for (const r of regular) expect(lay.spaceMap.get(lay.placements.get(r.id)!.slot)).toHaveLength(1);
     expect(after.A).toBe(after.B);
+  });
+
+  it('uses empty spaces on the light phase instead of only swapping within full tandems', () => {
+    // Like the user's Panel B: every tandem space full, heavy on B, empty spaces on C.
+    const three: Panel = { ...panel, spaces: 18, maxCircuits: 36 };
+    const mk = (amps: number, slot: number) => load('120-1p', amps, { tandem: true, slot });
+    const loads = [
+      mk(20, 3),
+      mk(20, 3), // B
+      mk(20, 4),
+      mk(4, 4), // B
+      mk(20, 5),
+      mk(20, 5), // C
+      mk(20, 1),
+      mk(4, 1), // A
+      mk(20, 7),
+      mk(8, 7), // A
+    ];
+    const before = phaseTotals(loads, layoutPanel(three, loads, 'three').placements).max;
+    expect(before).toEqual({ A: 52, B: 64, C: 40 });
+    const { after } = run(loads, 'three', three);
+    // Seven 20 A circuits on three phases: one phase must carry three, so 60 A is the best possible.
+    expect(Math.max(after.A, after.B, after.C)).toBe(60);
   });
 
   it('can balance on estimated load instead of max load', () => {

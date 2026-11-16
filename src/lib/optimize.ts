@@ -100,15 +100,26 @@ export function optimizePanel(
     .map(({ l }) => l);
   if (!movable.length) return noChange(false);
 
-  // Greedy seed.
-  for (const l of movable) {
+  // Greedy seed. A tandem circuit may join an open tandem half or start a new
+  // tandem in an empty space; the empty space is only offered when enough
+  // spaces remain for everything still to be placed. Open halves are tried
+  // first, so pairing up (saving a space) wins ties.
+  for (const [i, l] of movable.entries()) {
     const poles = polesOf(l.kind);
     const cands: number[] = [];
-    // Tandem circuits fill the open half of a tandem before starting a new one.
-    if (board.wantsTandem(l.id)) {
+    const twin = board.wantsTandem(l.id);
+    if (twin) {
       for (let s = 1; s <= panel.spaces; s++) if (board.canPlace(s, 1, true)) cands.push(s);
     }
-    if (!cands.length) for (let s = 1; s <= panel.spaces; s++) if (board.canPlace(s, poles)) cands.push(s);
+    const rest = movable.slice(i + 1);
+    const restTwins = rest.filter((r) => board.wantsTandem(r.id)).length;
+    const restSpaces = rest.reduce((n, r) => n + (board.wantsTandem(r.id) ? 0 : polesOf(r.kind)), 0);
+    // After a tandem starts a new space it leaves one open half for the next tandem.
+    const halvesAfter = board.openHalves() + (twin ? 1 : 0);
+    const needAfter = restSpaces + Math.ceil(Math.max(0, restTwins - halvesAfter) / 2);
+    if (!twin || !cands.length || board.emptySpaces() - 1 >= needAfter) {
+      for (let s = 1; s <= panel.spaces; s++) if (board.canPlace(s, poles)) cands.push(s);
+    }
     if (!cands.length) return noChange(true);
     let best = cands[0];
     let bestScore: Score | null = null;
@@ -136,11 +147,13 @@ export function optimizePanel(
       const s0 = starts.get(l.id)!;
       board.remove(l.id, s0, poles);
       add(l, s0, -1);
-      // Tandem circuits move between open tandem halves; others between empty spaces.
+      // Tandem circuits can join an open tandem half or take an empty space
+      // (everything is placed by now, so free spaces are truly spare); others
+      // move between empty spaces.
       const twin = board.wantsTandem(l.id);
       let target: number | null = null;
       for (let s = 1; s <= panel.spaces && target == null; s++) {
-        if (s === s0 || !board.canPlace(s, poles, twin)) continue;
+        if (s === s0 || !(board.canPlace(s, poles) || (twin && board.canPlace(s, 1, true)))) continue;
         const trial = { ...amps };
         add(l, s, 1, trial);
         if (better(score(trial, mode), cur)) target = s;
@@ -183,6 +196,28 @@ export function optimizePanel(
       }
     }
     if (!moved) break;
+  }
+
+  // Re-pair: tandem circuits sitting alone on the same phase share one space.
+  // Balance is unchanged (same phase) and a space is freed.
+  for (let merged = true; merged;) {
+    merged = false;
+    const lone = new Map<string, Load>();
+    for (const l of movable) {
+      const start = starts.get(l.id)!;
+      if (!board.wantsTandem(l.id) || board.occupants(start).length !== 1) continue;
+      const phase = phaseOfSlot(start, mode);
+      const host = lone.get(phase);
+      if (host && board.canPlace(starts.get(host.id)!, 1, true)) {
+        board.remove(l.id, start, 1);
+        board.place(l.id, starts.get(host.id)!, 1);
+        starts.set(l.id, starts.get(host.id)!);
+        lone.delete(phase);
+        merged = true;
+      } else {
+        lone.set(phase, l);
+      }
+    }
   }
 
   // Compact: slide each breaker (a whole space for tandems, so pairs stay
